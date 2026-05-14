@@ -151,17 +151,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download all artifacts
+      - name: Download RPM artifacts
         uses: actions/download-artifact@v4
         with:
-          path: artifacts/
+          path: rpms/
+          pattern: copa-rpm-*
+
+      - name: Download SRPM artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: copa-srpm
+          path: srpm/
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            artifacts/**/*.rpm
-            artifacts/**/*.src.rpm
+            rpms/**/*.rpm
+            srpm/*.src.rpm
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
