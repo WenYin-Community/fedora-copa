@@ -78,11 +78,3 @@ install -Dm644 completions/_copa %{buildroot}%{zsh_completions_dir}/_copa
 %changelog
 * Wed May 14 2026 copa contributors <copa@example.com> - 0.1.0-1
 - Initial package
-- Search packages from Fedora, RPM Fusion, Terra, Copr, OBS
-- Install packages with interactive source selection
-- Regex search support
-- JSON output support
-- Version fallback for OBS packages
-- Post-install repo management (keep/disable/remove)
-- Bash and zsh completion
-- Man page
