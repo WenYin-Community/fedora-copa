@@ -73,19 +73,19 @@ class SearchEngine:
         return []
 
     def search_copr(self, keyword: str, chroot: str) -> list[CoprSearchResult]:
-        """搜索 Copr 仓库 - 子字符串匹配项目名或包名"""
+        """搜索 Copr 仓库 - 子字符串匹配项目名或描述"""
         projects = self.copr.search_projects(keyword)
         results = []
         # 支持多关键词 AND 逻辑
         keywords = keyword.lower().split()
 
         for project in projects:
-            # 过滤：项目名必须包含所有关键词，或者项目中有包名包含所有关键词
+            # 过滤：项目名、owner 或描述必须包含所有关键词
             project_name_lower = project.name.lower()
             owner_lower = project.owner.lower()
             desc_lower = project.description.lower()
 
-            # 检查项目名、owner 或描述是否包含所有关键词
+            # 检查是否包含所有关键词
             def matches_all_keywords(text: str) -> bool:
                 return all(kw in text for kw in keywords)
 
@@ -93,12 +93,9 @@ class SearchEngine:
             owner_match = matches_all_keywords(owner_lower)
             desc_match = matches_all_keywords(desc_lower)
 
-            # 如果项目名/owner/描述不匹配，检查包名
+            # 跳过不匹配的项目
             if not name_match and not owner_match and not desc_match:
-                packages = self.copr.list_packages(project.owner, project.name)
-                package_match = any(matches_all_keywords(pkg.name.lower()) for pkg in packages)
-                if not package_match:
-                    continue
+                continue
 
             supports_chroot = chroot in project.chroots
             risk_level = self._assess_copr_risk(project, supports_chroot)
@@ -107,7 +104,7 @@ class SearchEngine:
                 project=project,
                 risk_level=risk_level,
                 supports_chroot=supports_chroot,
-                has_package=name_match,  # 项目名匹配则标记为 True
+                has_package=name_match,
             ))
 
         return results
