@@ -3,7 +3,6 @@
 import re
 import subprocess
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass
@@ -42,7 +41,7 @@ class DnfBackend:
         cmd.extend(args)
         return subprocess.run(cmd, capture_output=True, text=True)
 
-    def search(self, keyword: str, repo: Optional[str] = None) -> list[Package]:
+    def search(self, keyword: str, repo: str | None = None) -> list[Package]:
         """Search packages"""
         args = ["repoquery", "--queryinfo", keyword]
         if repo:
@@ -63,14 +62,18 @@ class DnfBackend:
             line = line.strip()
             if not line:
                 if current:
+                    epoch = current.get("Epoch", "0")
+                    version = current.get("Version", "")
+                    release = current.get("Release", "")
+                    evr = f"{epoch}:{version}-{release}"
                     packages.append(Package(
                         name=current.get("Name", ""),
-                        version=current.get("Version", ""),
-                        release=current.get("Release", ""),
+                        version=version,
+                        release=release,
                         arch=current.get("Architecture", ""),
                         summary=current.get("Summary", ""),
                         repo=current.get("Repo", ""),
-                        evr=current.get("Epoch", "0") + ":" + current.get("Version", "") + "-" + current.get("Release", ""),
+                        evr=evr,
                     ))
                     current = {}
                 continue
@@ -79,16 +82,20 @@ class DnfBackend:
                 key, _, value = line.partition(":")
                 current[key.strip()] = value.strip()
 
-        # 处理最后一个包
+        # Handle last package
         if current:
+            epoch = current.get("Epoch", "0")
+            version = current.get("Version", "")
+            release = current.get("Release", "")
+            evr = f"{epoch}:{version}-{release}"
             packages.append(Package(
                 name=current.get("Name", ""),
-                version=current.get("Version", ""),
-                release=current.get("Release", ""),
+                version=version,
+                release=release,
                 arch=current.get("Architecture", ""),
                 summary=current.get("Summary", ""),
                 repo=current.get("Repo", ""),
-                evr=current.get("Epoch", "0") + ":" + current.get("Version", "") + "-" + current.get("Release", ""),
+                evr=evr,
             ))
 
         return packages
@@ -171,7 +178,7 @@ class DnfBackend:
 
         return self._parse_repoquery(result.stdout)
 
-    def install(self, package: str, repo: Optional[str] = None) -> bool:
+    def install(self, package: str, repo: str | None = None) -> bool:
         """Install package"""
         args = ["install", package]
         if repo:
@@ -180,7 +187,7 @@ class DnfBackend:
         result = self._run(args, sudo=True)
         return result.returncode == 0
 
-    def makecache(self, repo: Optional[str] = None) -> bool:
+    def makecache(self, repo: str | None = None) -> bool:
         """Refresh cache"""
         args = ["makecache"]
         if repo:
@@ -191,7 +198,7 @@ class DnfBackend:
         result = self._run(args, sudo=True)
         return result.returncode == 0
 
-    def copr_enable(self, owner_project: str, chroot: Optional[str] = None) -> bool:
+    def copr_enable(self, owner_project: str, chroot: str | None = None) -> bool:
         """Enable Copr repo"""
         args = ["copr", "enable", owner_project]
         if chroot:

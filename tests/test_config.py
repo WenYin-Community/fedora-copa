@@ -1,15 +1,12 @@
 """config 模块测试"""
 
+
 import pytest
-import tempfile
-from pathlib import Path
+
 from copa.config import (
     Config,
-    SearchConfig,
     InstallConfig,
-    BackendConfig,
-    UIConfig,
-    RiskConfig,
+    SearchConfig,
 )
 
 

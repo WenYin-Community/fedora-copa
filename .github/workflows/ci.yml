@@ -72,7 +72,7 @@ jobs:
             python3-pip \
             python3-setuptools \
             python3-wheel \
-            python3-pyproject-rpm-macros \
+            pyproject-rpm-macros \
             git
 
       - name: Build RPM
@@ -107,7 +107,7 @@ jobs:
             python3-pip \
             python3-setuptools \
             python3-wheel \
-            python3-pyproject-rpm-macros \
+            pyproject-rpm-macros \
             git
 
       - name: Build SRPM

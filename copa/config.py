@@ -1,12 +1,8 @@
 """Configuration management"""
 
-import os
+import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
-
-import tomllib
-
 
 DEFAULT_CONFIG_PATH = Path.home() / ".config" / "copa" / "config.toml"
 
@@ -93,7 +89,7 @@ class Config:
     risk: RiskConfig = field(default_factory=RiskConfig)
 
     @classmethod
-    def load(cls, path: Optional[Path] = None) -> "Config":
+    def load(cls, path: Path | None = None) -> "Config":
         """Load configuration file"""
         config_path = path or DEFAULT_CONFIG_PATH
 
@@ -120,7 +116,7 @@ class Config:
         except Exception:
             return cls()
 
-    def save(self, path: Optional[Path] = None) -> None:
+    def save(self, path: Path | None = None) -> None:
         """Save configuration file"""
         config_path = path or DEFAULT_CONFIG_PATH
         config_path.parent.mkdir(parents=True, exist_ok=True)
@@ -129,25 +125,60 @@ class Config:
         lines = ["# copa configuration file\n"]
 
         lines.append("[search]")
-        lines.append(f"enable_fedora = {str(self.search.enable_fedora).lower()}")
-        lines.append(f"enable_rpmfusion = {str(self.search.enable_rpmfusion).lower()}")
-        lines.append(f"enable_terra_if_present = {str(self.search.enable_terra_if_present).lower()}")
-        lines.append(f"enable_copr = {str(self.search.enable_copr).lower()}")
-        patterns = ', '.join(f'"{p}"' for p in self.search.terra_repo_patterns)
+        lines.append(
+            f"enable_fedora = "
+            f"{str(self.search.enable_fedora).lower()}"
+        )
+        lines.append(
+            f"enable_rpmfusion = "
+            f"{str(self.search.enable_rpmfusion).lower()}"
+        )
+        lines.append(
+            f"enable_terra_if_present = "
+            f"{str(self.search.enable_terra_if_present).lower()}"
+        )
+        lines.append(
+            f"enable_copr = "
+            f"{str(self.search.enable_copr).lower()}"
+        )
+        patterns = ', '.join(
+            f'"{p}"' for p in self.search.terra_repo_patterns
+        )
         lines.append(f"terra_repo_patterns = [{patterns}]")
         lines.append("")
 
         lines.append("[install]")
-        lines.append(f'default_copr_post_action = "{self.install.default_copr_post_action}"')
-        lines.append(f"default_chroot_auto_detect = {str(self.install.default_chroot_auto_detect).lower()}")
-        lines.append(f"strict_selected_repo = {str(self.install.strict_selected_repo).lower()}")
-        lines.append(f"single_package_only = {str(self.install.single_package_only).lower()}")
+        lines.append(
+            f'default_copr_post_action = '
+            f'"{self.install.default_copr_post_action}"'
+        )
+        lines.append(
+            f"default_chroot_auto_detect = "
+            f"{str(self.install.default_chroot_auto_detect).lower()}"
+        )
+        lines.append(
+            f"strict_selected_repo = "
+            f"{str(self.install.strict_selected_repo).lower()}"
+        )
+        lines.append(
+            f"single_package_only = "
+            f"{str(self.install.single_package_only).lower()}"
+        )
         lines.append("")
 
         lines.append("[backend]")
-        lines.append(f"prefer_dnf5 = {str(self.backend.prefer_dnf5).lower()}")
-        lines.append(f"fallback_to_dnf = {str(self.backend.fallback_to_dnf).lower()}")
-        lines.append(f"require_copr_cli = {str(self.backend.require_copr_cli).lower()}")
+        lines.append(
+            f"prefer_dnf5 = "
+            f"{str(self.backend.prefer_dnf5).lower()}"
+        )
+        lines.append(
+            f"fallback_to_dnf = "
+            f"{str(self.backend.fallback_to_dnf).lower()}"
+        )
+        lines.append(
+            f"require_copr_cli = "
+            f"{str(self.backend.require_copr_cli).lower()}"
+        )
         lines.append("")
 
         lines.append("[ui]")
@@ -164,7 +195,7 @@ class Config:
             f.write("\n".join(lines) + "\n")
 
     @classmethod
-    def generate_example(cls, path: Optional[Path] = None) -> None:
+    def generate_example(cls, path: Path | None = None) -> None:
         """Generate example configuration file"""
         config_path = path or DEFAULT_CONFIG_PATH
         config_path.parent.mkdir(parents=True, exist_ok=True)

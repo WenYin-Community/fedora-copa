@@ -4,8 +4,6 @@ import json
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
-
 
 STATE_DIR = Path.home() / ".local" / "share" / "copa"
 STATE_FILE = STATE_DIR / "state.json"
@@ -43,7 +41,7 @@ class AppState:
     last_updated: str = ""  # ISO format
 
     @classmethod
-    def load(cls, path: Optional[Path] = None) -> "AppState":
+    def load(cls, path: Path | None = None) -> "AppState":
         """加载状态文件"""
         state_path = path or STATE_FILE
 
@@ -51,7 +49,7 @@ class AppState:
             return cls()
 
         try:
-            with open(state_path, "r", encoding="utf-8") as f:
+            with open(state_path, encoding="utf-8") as f:
                 data = json.load(f)
 
             state = cls()
@@ -67,7 +65,7 @@ class AppState:
         except Exception:
             return cls()
 
-    def save(self, path: Optional[Path] = None) -> None:
+    def save(self, path: Path | None = None) -> None:
         """保存状态文件"""
         state_path = path or STATE_FILE
         state_path.parent.mkdir(parents=True, exist_ok=True)
@@ -111,7 +109,7 @@ class AppState:
             chroot=chroot,
         ))
 
-    def get_copr_repo(self, owner: str, project: str) -> Optional[CoprState]:
+    def get_copr_repo(self, owner: str, project: str) -> CoprState | None:
         """获取 Copr 仓库状态"""
         for repo in self.copr_repos:
             if repo.owner == owner and repo.project == project:
@@ -160,7 +158,7 @@ class AppState:
             fedora_version=fedora_version,
         ))
 
-    def get_obs_repo(self, project: str) -> Optional[OBSState]:
+    def get_obs_repo(self, project: str) -> OBSState | None:
         """获取 OBS 仓库状态"""
         for repo in self.obs_repos:
             if repo.project == project:

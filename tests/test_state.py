@@ -1,10 +1,9 @@
 """state 模块测试"""
 
-import json
+
 import pytest
-import tempfile
-from pathlib import Path
-from copa.state import AppState, CoprState, OBSState
+
+from copa.state import AppState
 
 
 @pytest.fixture

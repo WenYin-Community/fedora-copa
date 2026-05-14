@@ -1,7 +1,7 @@
 """dnf_backend 模块测试"""
 
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 from copa.dnf_backend import DnfBackend, Package, Repo
 
 

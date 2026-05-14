@@ -1,7 +1,5 @@
 """cli 模块测试"""
 
-import pytest
-from unittest.mock import patch, MagicMock
 from copa.cli import (
     _filter_by_keywords,
     _filter_by_regex,

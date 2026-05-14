@@ -3,7 +3,6 @@
 import shutil
 import subprocess
 import sys
-from typing import Optional
 
 
 def check_command_exists(command: str) -> bool:
@@ -80,7 +79,7 @@ def select_from_list(
     prompt: str,
     options: list[str],
     allow_quit: bool = True,
-) -> Optional[int]:
+) -> int | None:
     """从列表中选择"""
     for i, option in enumerate(options, 1):
         print(f"  [{i}] {option}")

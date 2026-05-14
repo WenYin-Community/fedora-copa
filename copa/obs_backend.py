@@ -5,7 +5,6 @@ import subprocess
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 import httpx
 
@@ -49,7 +48,7 @@ class OBSRepo:
     project: str
     repository: str
     repo_url: str
-    fedora_version: Optional[str]
+    fedora_version: str | None
     is_current_version: bool
     version_gap: int  # Gap with current version
     repo_file_name: str = ""  # 本地 repo 文件名
@@ -65,7 +64,7 @@ class OBSBackend:
             timeout=30.0,
         )
 
-    def _get(self, path: str, params: Optional[dict] = None) -> ET.Element:
+    def _get(self, path: str, params: dict | None = None) -> ET.Element:
         """发送 GET 请求"""
         url = f"{self.api_base}{path}"
         response = self.client.get(url, params=params)
@@ -114,7 +113,7 @@ class OBSBackend:
     def search_binaries(
         self,
         package_name: str,
-        repository: Optional[str] = None,
+        repository: str | None = None,
         limit: int = 20,
     ) -> list[OBSBinary]:
         """Search binary packages"""
@@ -166,7 +165,7 @@ class OBSBackend:
         except Exception:
             return []
 
-    def _extract_fedora_version(self, repo_name: str) -> Optional[str]:
+    def _extract_fedora_version(self, repo_name: str) -> str | None:
         """Extract Fedora version from repo name"""
         # 常见格式: Fedora_43, Fedora_43_x86_64, fedora-43-x86_64
         patterns = [
@@ -213,7 +212,11 @@ class OBSBackend:
 
     def get_repo_file_url(self, project: str, repository: str) -> str:
         """Get repo file download link"""
-        return f"https://download.opensuse.org/repositories/{project}/{repository}/{project.replace(':', '_')}.repo"
+        safe_name = project.replace(':', '_')
+        return (
+            f"https://download.opensuse.org/repositories/"
+            f"{project}/{repository}/{safe_name}.repo"
+        )
 
     def download_repo_file(self, project: str, repository: str) -> bool:
         """Download repo file to /etc/yum.repos.d/"""
@@ -223,7 +226,11 @@ class OBSBackend:
 
         try:
             result = subprocess.run(
-                ["sudo", "curl", "-sSfL", "-o", str(repo_file_path), repo_file_url],
+                [
+                    "sudo", "curl", "-sSfL",
+                    "-o", str(repo_file_path),
+                    repo_file_url
+                ],
                 capture_output=True,
                 text=True,
             )
@@ -234,9 +241,13 @@ class OBSBackend:
     def disable_repo(self, project: str) -> bool:
         """Disable OBS repo"""
         repo_file_name = self._get_repo_file_name(project)
+        repo_id = repo_file_name.replace(".repo", "")
         try:
             result = subprocess.run(
-                ["sudo", "dnf", "config-manager", "--set-disabled", repo_file_name.replace(".repo", "")],
+                [
+                    "sudo", "dnf", "config-manager",
+                    "--set-disabled", repo_id
+                ],
                 capture_output=True,
                 text=True,
             )

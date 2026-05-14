@@ -1,7 +1,6 @@
 """Copr 后端 - 处理与 Copr API 和 copr-cli 的交互"""
 
 from dataclasses import dataclass
-from typing import Optional
 
 from copr.v3 import Client
 from copr.v3.exceptions import CoprNoResultException
@@ -22,7 +21,7 @@ class CoprPackage:
     """Copr 包信息"""
     name: str
     source_name: str
-    latest_version: Optional[str]
+    latest_version: str | None
     latest_build_succeeded: bool
 
 
@@ -32,14 +31,14 @@ class CoprBuild:
     id: int
     state: str
     chroot: str
-    started_on: Optional[int]
-    ended_on: Optional[int]
+    started_on: int | None
+    ended_on: int | None
 
 
 class CoprBackend:
     """Copr 后端封装"""
 
-    def __init__(self, config_path: Optional[str] = None):
+    def __init__(self, config_path: str | None = None):
         if config_path:
             # TODO: 从指定配置文件加载
             self.client = Client.create_from_config_file()
@@ -52,26 +51,36 @@ class CoprBackend:
             projects = self.client.project_proxy.search(query)
             result = []
             for project in projects[:limit]:
+                chroots = (
+                    list(project.chroot_repos.keys())
+                    if hasattr(project, 'chroot_repos')
+                    else []
+                )
                 result.append(CoprProject(
                     owner=project.ownername,
                     name=project.name,
                     description=project.description or "",
-                    chroots=list(project.chroot_repos.keys()) if hasattr(project, 'chroot_repos') else [],
+                    chroots=chroots,
                     instructions=project.instructions or "",
                 ))
             return result
         except Exception:
             return []
 
-    def get_project(self, owner: str, name: str) -> Optional[CoprProject]:
+    def get_project(self, owner: str, name: str) -> CoprProject | None:
         """Get project details"""
         try:
             project = self.client.project_proxy.get(owner, name)
+            chroots = (
+                list(project.chroot_repos.keys())
+                if hasattr(project, 'chroot_repos')
+                else []
+            )
             return CoprProject(
                 owner=project.ownername,
                 name=project.name,
                 description=project.description or "",
-                chroots=list(project.chroot_repos.keys()) if hasattr(project, 'chroot_repos') else [],
+                chroots=chroots,
                 instructions=project.instructions or "",
             )
         except CoprNoResultException:
@@ -97,7 +106,7 @@ class CoprBackend:
         self,
         owner: str,
         project: str,
-        package: Optional[str] = None,
+        package: str | None = None,
         limit: int = 10
     ) -> list[CoprBuild]:
         """Get build list"""

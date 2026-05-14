@@ -2,7 +2,6 @@
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
 
 from copa.copr_backend import CoprBackend, CoprProject
 from copa.dnf_backend import DnfBackend, Package
@@ -41,7 +40,7 @@ class OBSSearchResult:
     package: OBSPackage
     repos: list[OBSRepo]
     has_current_version: bool
-    best_repo: Optional[OBSRepo]
+    best_repo: OBSRepo | None
     risk_level: str  # low, medium, high
 
 
@@ -52,7 +51,7 @@ class SearchEngine:
         self,
         dnf: DnfBackend,
         copr: CoprBackend,
-        obs: Optional[OBSBackend] = None,
+        obs: OBSBackend | None = None,
     ):
         self.dnf = dnf
         self.copr = copr
@@ -181,7 +180,7 @@ class SearchEngine:
     def _assess_obs_risk(
         self,
         has_current_version: bool,
-        best_repo: Optional[OBSRepo],
+        best_repo: OBSRepo | None,
     ) -> str:
         """评估 OBS 风险等级"""
         if has_current_version:
