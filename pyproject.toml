@@ -28,7 +28,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "python-copr>=1.125",
+    "copr>=1.125",
     "httpx>=0.27",
 ]
 
