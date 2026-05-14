@@ -76,5 +76,5 @@ install -Dm644 completions/_copa %{buildroot}%{zsh_completions_dir}/_copa
 %config(noreplace) %{_sysconfdir}/copa/config.toml
 
 %changelog
-* Wed May 14 2026 copa contributors <copa@example.com> - 0.1.0-1
+* Wed May 14 2025 copa contributors <copa@example.com> - 0.1.0-1
 - Initial package
