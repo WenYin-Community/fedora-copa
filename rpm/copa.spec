@@ -13,7 +13,6 @@ BuildRequires:  python3-devel
 BuildRequires:  python3-pip
 BuildRequires:  python3-setuptools
 BuildRequires:  python3-wheel
-BuildRequires:  pyproject-rpm-macros
 
 Requires:       python3 >= 3.11
 Requires:       python3-copr
@@ -36,14 +35,11 @@ Supported package sources:
 %prep
 %autosetup -n %{name}-%{version}
 
-%generate_buildrequires
-%pyproject_buildrequires
-
 %build
-%pyproject_wheel
+%{__python3} -m pip wheel --no-deps --wheel-dir=%{_builddir} .
 
 %install
-%pyproject_install
+%{__python3} -m pip install --no-deps --root=%{buildroot} --prefix=%{_prefix} %{_builddir}/%{name}-%{version}-py3-none-any.whl
 
 # Install config directory
 install -d %{buildroot}%{_sysconfdir}/copa
@@ -61,7 +57,7 @@ install -Dm644 completions/copa.bash %{buildroot}%{bash_completions_dir}/copa
 install -Dm644 completions/_copa %{buildroot}%{zsh_completions_dir}/_copa
 
 %check
-%pytest
+%{__python3} -m pytest tests/ -v
 
 %files
 %license LICENSE
