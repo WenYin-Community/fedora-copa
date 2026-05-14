@@ -46,12 +46,24 @@ install -d %{buildroot}%{_sysconfdir}/copa
 # Install example config
 install -Dm644 /dev/null %{buildroot}%{_sysconfdir}/copa/config.toml
 
+# Install man page
+install -Dm644 man/copa.1 %{buildroot}%{_mandir}/man1/copa.1
+
+# Install bash completion
+install -Dm644 completions/copa.bash %{buildroot}%{bash_completions_dir}/copa
+
+# Install zsh completion
+install -Dm644 completions/_copa %{buildroot}%{zsh_completions_dir}/_copa
+
 %files
 %license LICENSE
 %doc README.md README_zh.md
 %{python3_sitelib}/copa/
 %{python3_sitelib}/copa-%{version}-py%{python3_version}.egg-info/
 %{_bindir}/copa
+%{_mandir}/man1/copa.1*
+%{bash_completions_dir}/copa
+%{zsh_completions_dir}/_copa
 %dir %{_sysconfdir}/copa
 %config(noreplace) %{_sysconfdir}/copa/config.toml
 

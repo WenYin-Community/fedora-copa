@@ -21,10 +21,14 @@ DNF5 风格的 Fedora Copr 软件包助手。
 ## 特性
 
 - **多关键词 AND 搜索** - `copa search ghostty terminal` 匹配同时包含两个词的包
+- **正则搜索** - `copa search -x "^ghost"` 支持正则表达式匹配（仅包名）
+- **JSON 输出** - `copa --json search ghostty` 机器可读格式
 - **统一的第三方仓库管理** - `copa repo list/enable/disable/remove`
 - **版本 fallback** - OBS 包版本不匹配时警告
-- **安装后策略** - 安装后自动禁用/删除仓库
+- **安装后策略** - 默认保留仓库，用户可选择禁用/删除
 - **风险评估** - 自动评估 Copr/OBS 包的风险等级
+- **Shell 补全** - bash 和 zsh 补全脚本
+- **Man page** - `man copa`
 
 ## 安装
 
@@ -63,9 +67,16 @@ copa search ghostty
 # 多关键词（AND 逻辑）
 copa search ghostty terminal
 
+# 正则搜索（仅匹配包名）
+copa search -x "^ghost"
+copa search --regex "vim|neovim"
+
 # 搜索特定来源
 copa search --official-only vim
 copa search --copr-only firefox
+
+# JSON 输出
+copa --json search ghostty
 ```
 
 ### 安装软件包
@@ -98,6 +109,9 @@ copa info ghostty
 
 # 显示 Copr 项目信息
 copa info owner/project
+
+# JSON 输出
+copa --json info ghostty
 ```
 
 ### 列出包
@@ -108,6 +122,9 @@ copa list
 
 # 列出 Copr 项目中的包
 copa list --packages owner/project
+
+# JSON 输出
+copa --json list
 ```
 
 ### 管理第三方仓库
@@ -136,6 +153,38 @@ copa repo remove obs:project
 copa audit
 ```
 
+### 查询包依赖
+
+```bash
+# 显示包依赖
+copa repoquery ghostty --requires
+
+# 显示包提供的内容
+copa repoquery ghostty --provides
+
+# 显示包文件
+copa repoquery ghostty --files
+
+# 显示包信息（默认）
+copa repoquery ghostty
+
+# JSON 输出
+copa --json repoquery ghostty --requires
+```
+
+### 查找提供特定文件的包
+
+```bash
+# 查找提供特定文件的包
+copa provides /usr/bin/vim
+
+# 查找提供特定命令的包
+copa provides ghostty
+
+# JSON 输出
+copa --json provides /usr/bin/vim
+```
+
 ## 命令选项
 
 ### search 命令
@@ -146,6 +195,7 @@ copa audit
 | `--official-only` | 只搜索 Fedora 官方源 |
 | `--rpmfusion-only` | 只搜索 RPM Fusion |
 | `--copr-only` | 只搜索 Copr |
+| `-x, --regex` | 使用正则搜索（仅包名） |
 
 ### install 命令
 
@@ -171,27 +221,36 @@ copa audit
 | `disable REPO` | 禁用仓库 |
 | `remove REPO` | 删除仓库 |
 
+### repoquery 命令
+
+| 选项 | 说明 |
+|------|------|
+| `package` | 要查询的包名 |
+| `--requires` | 显示包依赖 |
+| `--provides` | 显示包提供的内容 |
+| `--files` | 显示包文件 |
+
 ### 全局选项
 
 | 选项 | 说明 |
 |------|------|
 | `-V, --version` | 显示版本 |
+| `--json` | JSON 格式输出 |
 | `-h, --help` | 显示帮助 |
 
 ## 安装后策略
 
-安装完成后，`copa` 会询问是否保留 Copr/OBS 仓库：
+安装完成后，`copa` 默认保留仓库并提示用户：
 
 ```
-Keep Copr repo owner/project enabled for future updates?
+Copr repo owner/project is kept enabled.
+Note: This repo will participate in system updates.
+If you don't want this, you can disable or remove it:
+  copa repo disable copr:owner/project
+  copa repo remove copr:owner/project
 
-[1] Keep enabled
-[2] Disable repo [default]
-[3] Remove repo file
-Select [1/2/3]:
+Disable repo now? [y/N]:
 ```
-
-默认行为：禁用仓库（保留 repo 文件）
 
 ## 版本 Fallback
 
@@ -201,11 +260,54 @@ OBS 搜索支持版本 fallback：
 - 最多 fallback 2 个版本
 - 版本不匹配时会明确提示风险
 
+## 配置文件
+
+配置文件位置：`~/.config/copa/config.toml`
+
+```toml
+[search]
+enable_fedora = true
+enable_rpmfusion = true
+enable_terra_if_present = true
+enable_copr = true
+
+[install]
+default_copr_post_action = "disable"
+
+[backend]
+prefer_dnf5 = true
+fallback_to_dnf = true
+```
+
 ## 状态文件
 
 状态文件位置：`~/.local/share/copa/state.json`
 
 记录由 `copa` 启用的 Copr/OBS 仓库，用于安装后清理。
+
+## Shell 补全
+
+### Bash
+
+```bash
+# 系统级
+sudo cp completions/copa.bash /etc/bash_completion.d/
+
+# 用户级
+mkdir -p ~/.bash_completion.d
+cp completions/copa.bash ~/.bash_completion.d/
+```
+
+### Zsh
+
+```bash
+# 系统级
+sudo cp completions/_copa /usr/share/zsh/site-functions/
+
+# 用户级
+mkdir -p ~/.zsh/completions
+cp completions/_copa ~/.zsh/completions/
+```
 
 ## 开发
 

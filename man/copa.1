@@ -1,0 +1,193 @@
+.TH COPA 1 "May 2026" "copa 0.1.0" "User Commands"
+.SH NAME
+copa \- DNF5-style Fedora Copr Package Assistant
+.SH SYNOPSIS
+.B copa
+[\fIOPTIONS\fR] \fICOMMAND\fR [\fIARGS\fR...]
+.SH DESCRIPTION
+\fBcopa\fR is a Copr package assistant for the Fedora / DNF5 ecosystem, providing a search and install experience similar to paru/yay on Arch, but with DNF-style command format.
+.PP
+Supported package sources:
+.RS
+.IP \(bu 2
+Fedora official repos
+.IP \(bu 2
+RPM Fusion
+.IP \(bu 2
+Terra
+.IP \(bu 2
+Copr (Fedora community build service)
+.IP \(bu 2
+openSUSE OBS (cross-distro build service)
+.RE
+.SH GLOBAL OPTIONS
+.TP
+.B \-V, \-\-version
+Show version and exit.
+.TP
+.B \-\-json
+Output in JSON format.
+.TP
+.B \-h, \-\-help
+Show help message and exit.
+.SH COMMANDS
+.SS search
+Search packages from enabled repositories.
+.PP
+.RS
+.B copa search
+[\fIOPTIONS\fR] \fIKEYWORD\fR [\fIKEYWORD\fR...]
+.RE
+.PP
+Options:
+.TP
+.B \-\-official\-only
+Search Fedora official repos only.
+.TP
+.B \-\-rpmfusion\-only
+Search RPM Fusion only.
+.TP
+.B \-\-copr\-only
+Search Copr only.
+.PP
+Multiple keywords use AND logic (all words must match).
+.SS install
+Install a package.
+.PP
+.RS
+.B copa install
+[\fIOPTIONS\fR] \fIPACKAGE\fR
+.RE
+.PP
+Options:
+.TP
+.B \-\-official\-only
+Install from Fedora official repos only.
+.TP
+.B \-\-rpmfusion\-only
+Install from RPM Fusion only.
+.TP
+.B \-\-copr\-only
+Install from Copr only.
+.TP
+.BI \-\-copr\  OWNER/PROJECT
+Use specified Copr repo.
+.TP
+.B \-\-obs\-only
+Install from OBS only.
+.TP
+.B \-\-no\-obs
+Skip OBS search.
+.TP
+.B \-\-allow\-obs\-fallback
+Allow OBS version fallback.
+.TP
+.B \-\-keep\-copr
+Keep Copr repo after install.
+.TP
+.B \-\-dry\-run
+Show operations without executing.
+.TP
+.B \-y, \-\-assumeyes
+Auto confirm.
+.SS info
+Show package information.
+.PP
+.RS
+.B copa info
+\fIPACKAGE\fR
+.RE
+.SS list
+List packages or repos.
+.PP
+.RS
+.B copa list
+[\fI\-\-packages\fR \fIOWNER/PROJECT\fR]
+.RE
+.SS repo
+Manage third-party repos (Copr/OBS).
+.PP
+.RS
+.B copa repo list
+.RS
+List all third-party repos.
+.RE
+.PP
+.B copa repo enable
+\fIREPO\fR
+.RS
+Enable repo. Format: \fBcopr:owner/project\fR or \fBobs:project\fR.
+.RE
+.PP
+.B copa repo disable
+\fIREPO\fR
+.RS
+Disable repo.
+.RE
+.PP
+.B copa repo remove
+\fIREPO\fR
+.RS
+Remove repo.
+.RE
+.RE
+.SS doctor
+Check system environment and dependencies.
+.PP
+.RS
+.B copa doctor
+.RE
+.SS audit
+Audit enabled repos for issues.
+.PP
+.RS
+.B copa audit
+.RE
+.SH EXAMPLES
+.TP
+.B copa search ghostty
+Search for ghostty in all enabled repos.
+.TP
+.B copa search ghostty terminal
+Search for packages matching both "ghostty" and "terminal".
+.TP
+.B copa install ghostty
+Install ghostty interactively.
+.TP
+.B copa install \-\-copr rivenirvana/ghostty ghostty
+Install ghostty from specified Copr repo.
+.TP
+.B copa install \-\-dry\-run ghostty
+Preview installation without executing.
+.TP
+.B copa repo list
+List all third-party repos.
+.TP
+.B copa repo disable copr:owner/project
+Disable a Copr repo.
+.SH FILES
+.TP
+.I ~/.config/copa/config.toml
+User configuration file.
+.TP
+.I ~/.local/share/copa/state.json
+State file recording repos managed by copa.
+.SH EXIT STATUS
+.TP
+.B 0
+Success.
+.TP
+.B 1
+Error.
+.TP
+.B 130
+Interrupted by user (Ctrl+C).
+.SH SEE ALSO
+.BR dnf (8),
+.BR dnf5 (8),
+.BR copr\-cli (1),
+.BR osc (1)
+.SH AUTHORS
+copa contributors.
+.SH LICENSE
+GPL-2.0-or-later

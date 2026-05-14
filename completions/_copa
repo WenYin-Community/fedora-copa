@@ -1,0 +1,86 @@
+# zsh completion for copa
+#compdef copa
+
+_copa() {
+    local -a commands
+    commands=(
+        'search:Search packages'
+        'install:Install package'
+        'info:Show package info'
+        'list:List packages'
+        'repo:Manage third-party repos'
+        'repoquery:Query package dependencies'
+        'provides:Find packages providing a file'
+        'doctor:Check system environment'
+        'audit:Audit enabled repos'
+    )
+
+    _arguments -C \
+        '(-V --version)'{-V,--version}'[Show version]' \
+        '--json[Output in JSON format]' \
+        '(-h --help)'{-h,--help}'[Show help]' \
+        '1: :->command' \
+        '*::arg:->args'
+
+    case $state in
+        command)
+            _describe 'command' commands
+            ;;
+        args)
+            case $words[1] in
+                search)
+                    _arguments \
+                        '--official-only[Search Fedora official repos only]' \
+                        '--rpmfusion-only[Search RPM Fusion only]' \
+                        '--copr-only[Search Copr only]' \
+                        '--json[Output in JSON format]' \
+                        '*:keyword:'
+                    ;;
+                install)
+                    _arguments \
+                        '--official-only[Install from Fedora official repos only]' \
+                        '--rpmfusion-only[Install from RPM Fusion only]' \
+                        '--copr-only[Install from Copr only]' \
+                        '--copr[Use specified Copr repo]:owner/project:' \
+                        '--obs-only[Install from OBS only]' \
+                        '--no-obs[Skip OBS search]' \
+                        '--allow-obs-fallback[Allow OBS version fallback]' \
+                        '--keep-copr[Keep Copr repo after install]' \
+                        '--dry-run[Show operations without executing]' \
+                        '-y[Auto confirm]' \
+                        '--assumeyes[Auto confirm]' \
+                        '--json[Output in JSON format]' \
+                        ':package:'
+                    ;;
+                repo)
+                    _arguments \
+                        '1: :(list enable disable remove)' \
+                        '2:repo:'
+                    ;;
+                repoquery)
+                    _arguments \
+                        '--requires[Show package dependencies]' \
+                        '--provides[Show what package provides]' \
+                        '--files[Show package files]' \
+                        ':package:'
+                    ;;
+                provides)
+                    _arguments \
+                        ':file:'
+                    ;;
+                list)
+                    _arguments \
+                        '--packages[List packages in Copr project]:owner/project:' \
+                        '--json[Output in JSON format]'
+                    ;;
+                info)
+                    _arguments \
+                        '--json[Output in JSON format]' \
+                        ':package:'
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+_copa "$@"

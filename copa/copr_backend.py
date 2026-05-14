@@ -47,7 +47,7 @@ class CoprBackend:
             self.client = Client.create_from_config_file()
 
     def search_projects(self, query: str, limit: int = 20) -> list[CoprProject]:
-        """搜索 Copr 项目"""
+        """Search Copr projects"""
         try:
             projects = self.client.project_proxy.search(query)
             result = []
@@ -64,7 +64,7 @@ class CoprBackend:
             return []
 
     def get_project(self, owner: str, name: str) -> Optional[CoprProject]:
-        """获取项目详情"""
+        """Get project details"""
         try:
             project = self.client.project_proxy.get(owner, name)
             return CoprProject(
@@ -78,7 +78,7 @@ class CoprBackend:
             return None
 
     def list_packages(self, owner: str, project: str) -> list[CoprPackage]:
-        """列出项目中的包"""
+        """List packages in project"""
         try:
             packages = self.client.package_proxy.get_list(owner, project)
             result = []
@@ -100,7 +100,7 @@ class CoprBackend:
         package: Optional[str] = None,
         limit: int = 10
     ) -> list[CoprBuild]:
-        """获取构建列表"""
+        """Get build list"""
         try:
             kwargs = {"limit": limit}
             if package:
@@ -125,7 +125,7 @@ class CoprBackend:
         project: str,
         package_name: str
     ) -> bool:
-        """检查包是否存在于项目中"""
+        """Check if package exists in project"""
         try:
             self.client.package_proxy.get(owner, project, package_name)
             return True

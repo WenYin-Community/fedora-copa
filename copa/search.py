@@ -1,4 +1,4 @@
-"""搜索逻辑 - 整合多个后端的搜索结果"""
+"""Search logic - integrate search results from multiple backends"""
 
 from dataclasses import dataclass
 from enum import Enum
@@ -20,7 +20,7 @@ class Source(Enum):
 
 @dataclass
 class SearchResult:
-    """搜索结果"""
+    """Search result"""
     package: Package
     source: Source
     repo: str

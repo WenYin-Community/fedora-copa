@@ -1,4 +1,4 @@
-"""配置管理"""
+"""Configuration management"""
 
 import os
 from dataclasses import dataclass, field
@@ -43,7 +43,7 @@ DEFAULT_CONFIG = {
 
 @dataclass
 class SearchConfig:
-    """搜索配置"""
+    """Search configuration"""
     enable_fedora: bool = True
     enable_rpmfusion: bool = True
     enable_terra_if_present: bool = True
@@ -53,7 +53,7 @@ class SearchConfig:
 
 @dataclass
 class InstallConfig:
-    """安装配置"""
+    """Install configuration"""
     default_copr_post_action: str = "disable"
     default_chroot_auto_detect: bool = True
     strict_selected_repo: bool = True
@@ -62,7 +62,7 @@ class InstallConfig:
 
 @dataclass
 class BackendConfig:
-    """后端配置"""
+    """Backend configuration"""
     prefer_dnf5: bool = True
     fallback_to_dnf: bool = True
     require_copr_cli: bool = True
@@ -70,14 +70,14 @@ class BackendConfig:
 
 @dataclass
 class UIConfig:
-    """界面配置"""
+    """UI configuration"""
     language: str = "auto"
     json: bool = False
 
 
 @dataclass
 class RiskConfig:
-    """风险配置"""
+    """Risk configuration"""
     block_mock_only: bool = True
     block_do_not_use: bool = True
     warn_experimental: bool = True
@@ -85,7 +85,7 @@ class RiskConfig:
 
 @dataclass
 class Config:
-    """应用配置"""
+    """Application configuration"""
     search: SearchConfig = field(default_factory=SearchConfig)
     install: InstallConfig = field(default_factory=InstallConfig)
     backend: BackendConfig = field(default_factory=BackendConfig)
@@ -94,7 +94,7 @@ class Config:
 
     @classmethod
     def load(cls, path: Optional[Path] = None) -> "Config":
-        """加载配置文件"""
+        """Load configuration file"""
         config_path = path or DEFAULT_CONFIG_PATH
 
         if not config_path.exists():
@@ -121,7 +121,7 @@ class Config:
             return cls()
 
     def save(self, path: Optional[Path] = None) -> None:
-        """保存配置文件"""
+        """Save configuration file"""
         config_path = path or DEFAULT_CONFIG_PATH
         config_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -165,7 +165,7 @@ class Config:
 
     @classmethod
     def generate_example(cls, path: Optional[Path] = None) -> None:
-        """生成示例配置文件"""
+        """Generate example configuration file"""
         config_path = path or DEFAULT_CONFIG_PATH
         config_path.parent.mkdir(parents=True, exist_ok=True)
 

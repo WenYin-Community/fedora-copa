@@ -34,7 +34,7 @@ class DnfBackend:
         self._binary = "dnf5" if use_dnf5 else "dnf"
 
     def _run(self, args: list[str], sudo: bool = False) -> subprocess.CompletedProcess:
-        """执行 dnf 命令"""
+        """Execute dnf command"""
         cmd = []
         if sudo:
             cmd.append("sudo")
@@ -43,7 +43,7 @@ class DnfBackend:
         return subprocess.run(cmd, capture_output=True, text=True)
 
     def search(self, keyword: str, repo: Optional[str] = None) -> list[Package]:
-        """搜索软件包"""
+        """Search packages"""
         args = ["repoquery", "--queryinfo", keyword]
         if repo:
             args.extend(["--repo", repo])
@@ -55,7 +55,7 @@ class DnfBackend:
         return self._parse_repoquery(result.stdout)
 
     def _parse_repoquery(self, output: str) -> list[Package]:
-        """解析 repoquery 输出"""
+        """Parse repoquery output"""
         packages = []
         current = {}
 
@@ -94,7 +94,7 @@ class DnfBackend:
         return packages
 
     def repolist(self, enabled_only: bool = True) -> list[Repo]:
-        """列出仓库"""
+        """List repos"""
         args = ["repolist"]
         if enabled_only:
             args.append("--enabled")
@@ -106,7 +106,7 @@ class DnfBackend:
         return self._parse_repolist(result.stdout)
 
     def _parse_repolist(self, output: str) -> list[Repo]:
-        """解析 repolist 输出"""
+        """Parse repolist output"""
         repos = []
         lines = output.strip().split("\n")
 
@@ -126,7 +126,7 @@ class DnfBackend:
         return repos
 
     def get_enabled_repos(self) -> dict[str, list[str]]:
-        """获取已启用仓库，按类型分类"""
+        """Get enabled repos, categorized by type"""
         repos = self.repolist(enabled_only=True)
         categorized = {
             "fedora": [],
@@ -139,7 +139,7 @@ class DnfBackend:
 
         for repo in repos:
             repo_id_lower = repo.id.lower()
-            # 优先检查更具体的条件
+            # Check more specific conditions first
             if repo_id_lower.startswith("copr:") or repo_id_lower.startswith("coprdep:"):
                 categorized["copr"].append(repo.id)
             elif "rpmfusion" in repo_id_lower:
@@ -156,7 +156,7 @@ class DnfBackend:
         return categorized
 
     def search_in_repos(self, keyword: str, repo_ids: list[str]) -> list[Package]:
-        """在指定仓库中搜索"""
+        """Search in specified repos"""
         if not repo_ids:
             return []
 
@@ -172,7 +172,7 @@ class DnfBackend:
         return self._parse_repoquery(result.stdout)
 
     def install(self, package: str, repo: Optional[str] = None) -> bool:
-        """安装软件包"""
+        """Install package"""
         args = ["install", package]
         if repo:
             args.extend(["--repo", repo])
@@ -181,7 +181,7 @@ class DnfBackend:
         return result.returncode == 0
 
     def makecache(self, repo: Optional[str] = None) -> bool:
-        """刷新缓存"""
+        """Refresh cache"""
         args = ["makecache"]
         if repo:
             args.extend(["--repo", repo])
@@ -192,7 +192,7 @@ class DnfBackend:
         return result.returncode == 0
 
     def copr_enable(self, owner_project: str, chroot: Optional[str] = None) -> bool:
-        """启用 Copr 仓库"""
+        """Enable Copr repo"""
         args = ["copr", "enable", owner_project]
         if chroot:
             args.append(chroot)
@@ -201,17 +201,17 @@ class DnfBackend:
         return result.returncode == 0
 
     def copr_disable(self, owner_project: str) -> bool:
-        """禁用 Copr 仓库"""
+        """Disable Copr repo"""
         result = self._run(["copr", "disable", owner_project], sudo=True)
         return result.returncode == 0
 
     def copr_remove(self, owner_project: str) -> bool:
-        """移除 Copr 仓库"""
+        """Remove Copr repo"""
         result = self._run(["copr", "remove", owner_project], sudo=True)
         return result.returncode == 0
 
     def copr_list(self) -> list[str]:
-        """列出已启用的 Copr 仓库"""
+        """List enabled Copr repos"""
         result = self._run(["copr", "list"])
         if result.returncode != 0:
             return []
@@ -220,8 +220,8 @@ class DnfBackend:
         return [line.strip() for line in result.stdout.strip().split("\n") if line.strip()]
 
     def get_chroot(self) -> str:
-        """获取当前 chroot"""
-        # 从 /etc/os-release 获取版本
+        """Get current chroot"""
+        # Get version from /etc/os-release
         try:
             with open("/etc/os-release") as f:
                 content = f.read()
@@ -233,14 +233,14 @@ class DnfBackend:
         except Exception:
             version = "rawhide"
 
-        # 获取架构
+        # Get architecture
         result = subprocess.run(["uname", "-m"], capture_output=True, text=True)
         arch = result.stdout.strip() if result.returncode == 0 else "x86_64"
 
         return f"fedora-{version}-{arch}"
 
     def get_fedora_version(self) -> int:
-        """获取 Fedora 版本号"""
+        """Get Fedora version number"""
         try:
             with open("/etc/os-release") as f:
                 content = f.read()

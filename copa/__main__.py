@@ -1,4 +1,4 @@
-"""允许通过 python -m copa 运行"""
+"""Allow running via python -m copa"""
 
 from copa.cli import main
 

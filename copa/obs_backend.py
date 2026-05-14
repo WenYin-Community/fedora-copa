@@ -51,7 +51,7 @@ class OBSRepo:
     repo_url: str
     fedora_version: Optional[str]
     is_current_version: bool
-    version_gap: int  # 与当前版本的差距
+    version_gap: int  # Gap with current version
     repo_file_name: str = ""  # 本地 repo 文件名
 
 
@@ -73,7 +73,7 @@ class OBSBackend:
         return ET.fromstring(response.text)
 
     def search_projects(self, query: str, limit: int = 20) -> list[OBSProject]:
-        """搜索项目"""
+        """Search projects"""
         try:
             root = self._get("/search/project", {"match": f"contains(@name,'{query}')"})
             projects = []
@@ -91,9 +91,9 @@ class OBSBackend:
             return []
 
     def search_packages(self, query: str, limit: int = 20) -> list[OBSPackage]:
-        """搜索包 - 子字符串匹配"""
+        """Search packages - substring match"""
         try:
-            # 使用 contains() 实现子字符串匹配
+            # Use contains() for substring matching
             root = self._get("/search/package", {"match": f"contains(@name,'{query}')"})
             packages = []
             for pkg_elem in root.findall(".//package")[:limit]:
@@ -117,7 +117,7 @@ class OBSBackend:
         repository: Optional[str] = None,
         limit: int = 20,
     ) -> list[OBSBinary]:
-        """搜索二进制包"""
+        """Search binary packages"""
         match_parts = [f"name='{package_name}'"]
         if repository:
             match_parts.append(f"repository='{repository}'")
@@ -142,13 +142,13 @@ class OBSBackend:
             return []
 
     def get_project_repos(self, project: str) -> list[OBSRepo]:
-        """获取项目的仓库列表"""
+        """Get project repo list"""
         try:
             root = self._get(f"/source/{project}/_meta")
             repos = []
             for repo_elem in root.findall(".//repository"):
                 repo_name = repo_elem.get("name", "")
-                # 尝试从仓库名中提取 Fedora 版本
+                # Try to extract Fedora version from repo name
                 fedora_version = self._extract_fedora_version(repo_name)
                 repo_url = f"https://download.opensuse.org/repositories/{project}/{repo_name}"
                 repo_file_name = self._get_repo_file_name(project)
@@ -167,7 +167,7 @@ class OBSBackend:
             return []
 
     def _extract_fedora_version(self, repo_name: str) -> Optional[str]:
-        """从仓库名中提取 Fedora 版本"""
+        """Extract Fedora version from repo name"""
         # 常见格式: Fedora_43, Fedora_43_x86_64, fedora-43-x86_64
         patterns = [
             r"[Ff]edora[_-](\d+)",
@@ -191,7 +191,7 @@ class OBSBackend:
         current_fedora_version: int,
         max_fallback: int = 2,
     ) -> list[OBSRepo]:
-        """查找 Fedora 仓库，支持版本 fallback"""
+        """Find Fedora repos with version fallback"""
         repos = self.get_project_repos(project)
         fedora_repos = []
 
@@ -207,16 +207,16 @@ class OBSBackend:
                 except ValueError:
                     continue
 
-        # 按版本差距排序，优先使用当前版本
+        # Sort by version gap, prioritize current version
         fedora_repos.sort(key=lambda r: r.version_gap)
         return fedora_repos
 
     def get_repo_file_url(self, project: str, repository: str) -> str:
-        """获取 repo 文件下载链接"""
+        """Get repo file download link"""
         return f"https://download.opensuse.org/repositories/{project}/{repository}/{project.replace(':', '_')}.repo"
 
     def download_repo_file(self, project: str, repository: str) -> bool:
-        """下载 repo 文件到 /etc/yum.repos.d/"""
+        """Download repo file to /etc/yum.repos.d/"""
         repo_file_name = self._get_repo_file_name(project)
         repo_file_path = OBS_REPO_DIR / repo_file_name
         repo_file_url = self.get_repo_file_url(project, repository)
@@ -232,7 +232,7 @@ class OBSBackend:
             return False
 
     def disable_repo(self, project: str) -> bool:
-        """禁用 OBS 仓库"""
+        """Disable OBS repo"""
         repo_file_name = self._get_repo_file_name(project)
         try:
             result = subprocess.run(
@@ -245,7 +245,7 @@ class OBSBackend:
             return False
 
     def remove_repo_file(self, project: str) -> bool:
-        """删除 OBS repo 文件"""
+        """Delete OBS repo file"""
         repo_file_name = self._get_repo_file_name(project)
         repo_file_path = OBS_REPO_DIR / repo_file_name
 
