@@ -1,13 +1,16 @@
 """OBS 后端 - 处理与 openSUSE Build Service 的交互"""
 
 import re
+import subprocess
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
 import httpx
 
 OBS_API_BASE = "https://api.opensuse.org"
+OBS_REPO_DIR = Path("/etc/yum.repos.d")
 
 
 @dataclass
@@ -49,6 +52,7 @@ class OBSRepo:
     fedora_version: Optional[str]
     is_current_version: bool
     version_gap: int  # 与当前版本的差距
+    repo_file_name: str = ""  # 本地 repo 文件名
 
 
 class OBSBackend:
@@ -146,6 +150,7 @@ class OBSBackend:
                 # 尝试从仓库名中提取 Fedora 版本
                 fedora_version = self._extract_fedora_version(repo_name)
                 repo_url = f"https://download.opensuse.org/repositories/{project}/{repo_name}"
+                repo_file_name = self._get_repo_file_name(project)
 
                 repos.append(OBSRepo(
                     project=project,
@@ -154,6 +159,7 @@ class OBSBackend:
                     fedora_version=fedora_version,
                     is_current_version=False,  # 需要外部判断
                     version_gap=0,  # 需要外部计算
+                    repo_file_name=repo_file_name,
                 ))
             return repos
         except Exception:
@@ -171,6 +177,12 @@ class OBSBackend:
             if match:
                 return match.group(1)
         return None
+
+    def _get_repo_file_name(self, project: str) -> str:
+        """生成 repo 文件名"""
+        # home:user1 -> obs_home_user1.repo
+        safe_name = project.replace(":", "_").replace("/", "_")
+        return f"obs_{safe_name}.repo"
 
     def find_fedora_repos(
         self,
@@ -201,6 +213,50 @@ class OBSBackend:
     def get_repo_file_url(self, project: str, repository: str) -> str:
         """获取 repo 文件下载链接"""
         return f"https://download.opensuse.org/repositories/{project}/{repository}/{project.replace(':', '_')}.repo"
+
+    def download_repo_file(self, project: str, repository: str) -> bool:
+        """下载 repo 文件到 /etc/yum.repos.d/"""
+        repo_file_name = self._get_repo_file_name(project)
+        repo_file_path = OBS_REPO_DIR / repo_file_name
+        repo_file_url = self.get_repo_file_url(project, repository)
+
+        try:
+            result = subprocess.run(
+                ["sudo", "curl", "-sSfL", "-o", str(repo_file_path), repo_file_url],
+                capture_output=True,
+                text=True,
+            )
+            return result.returncode == 0
+        except Exception:
+            return False
+
+    def disable_repo(self, project: str) -> bool:
+        """禁用 OBS 仓库"""
+        repo_file_name = self._get_repo_file_name(project)
+        try:
+            result = subprocess.run(
+                ["sudo", "dnf", "config-manager", "--set-disabled", repo_file_name.replace(".repo", "")],
+                capture_output=True,
+                text=True,
+            )
+            return result.returncode == 0
+        except Exception:
+            return False
+
+    def remove_repo_file(self, project: str) -> bool:
+        """删除 OBS repo 文件"""
+        repo_file_name = self._get_repo_file_name(project)
+        repo_file_path = OBS_REPO_DIR / repo_file_name
+
+        try:
+            result = subprocess.run(
+                ["sudo", "rm", "-f", str(repo_file_path)],
+                capture_output=True,
+                text=True,
+            )
+            return result.returncode == 0
+        except Exception:
+            return False
 
     def close(self) -> None:
         """关闭客户端"""

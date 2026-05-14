@@ -403,28 +403,95 @@ Fallback 版本限制：
 
 ### OBS Repo 添加方式
 
-OBS 仓库需要用户手动添加，不自动启用：
+OBS 仓库由 `copa` 自动下载并添加到 `/etc/yum.repos.d/`，然后询问用户是否安装：
 
 ```text
-To install from OBS, you need to add the repository manually:
+Found OBS package: ghostty
+Project: home:user1
+Repository: Fedora_43
+Version: 1.0.0
 
-  sudo dnf config-manager --add-repo https://download.opensuse.org/repositories/home:/user1/Fedora_43/home:user1.repo
+Downloading repo file to /etc/yum.repos.d/obs_home_user1.repo...
+✓ Repo file downloaded.
 
-Then install the package:
+The following commands will be executed:
 
+  sudo dnf5 makecache --refresh
   sudo dnf5 install ghostty
 
-Would you like to copy these commands to clipboard? [y/N]:
+Press Enter to install, or type 'q' to cancel [Install/quit]:
 ```
+
+实现流程：
+
+```bash
+# 1. 自动下载 repo 文件（不需要用户确认）
+sudo curl -o /etc/yum.repos.d/obs_<project>.repo \
+  "https://download.opensuse.org/repositories/<project>/Fedora_43/<project>.repo"
+
+# 2. 询问用户是否继续（默认回车 = 安装）
+# 用户按回车后执行：
+
+# 3. 刷新缓存
+sudo dnf5 makecache --refresh
+
+# 4. 安装包
+sudo dnf5 install <package>
+
+# 5. 询问是否保留 OBS 仓库（默认禁用）
+```
+
+行为规则：
+
+- 下载 repo 文件是自动的，不需要用户确认
+- 下载完成后，展示将执行的命令并询问用户
+- 直接按回车：开始安装
+- 输入 `q` / `quit`：取消操作（repo 文件已下载，用户可手动清理或保留）
+- 安装完成后，询问是否保留 OBS 仓库，默认禁用
+
+### OBS 安装后保留策略
+
+与 Copr 类似，安装完成后询问用户是否保留 OBS 仓库：
+
+```text
+Package installed successfully.
+
+Keep OBS repository home:user1 enabled for future updates?
+
+[1] Keep enabled
+[2] Disable repo [default]
+[3] Remove repo file
+Select [1/2/3]:
+```
+
+默认策略：禁用 OBS 仓库（与 Copr 一致）
+
+- 保持启用：OBS 仓库继续参与系统更新
+- 禁用仓库：保留 repo 文件但禁用
+- 删除 repo 文件：完全移除 OBS 仓库
+
+### OBS 仓库文件命名
+
+为避免冲突，OBS repo 文件命名为：
+
+```text
+/etc/yum.repos.d/obs_<project_name>.repo
+```
+
+其中 `<project_name>` 中的 `:` 替换为 `_`，例如：
+
+- `home:user1` → `obs_home_user1.repo`
+- `science` → `obs_science.repo`
 
 ### OBS 与 Copr 的区别
 
 | 特性 | Copr | OBS |
 |------|------|-----|
-| 仓库管理 | `dnf5 copr enable/disable` | 手动添加 repo 文件 |
+| 仓库管理 | `dnf5 copr enable/disable` | 下载 repo 文件 + `dnf config-manager` |
 | 搜索 | Copr API | OBS API |
 | 版本匹配 | chroot 机制 | repository 名称匹配 |
-| 自动化程度 | 高（可自动启用） | 低（需手动操作） |
+| 自动化程度 | 高（可自动启用） | 中（自动下载 repo） |
+| 安装后处理 | `dnf5 copr disable` | `dnf config-manager --set-disabled` |
 | 风险提示 | 风险评分 | 版本 mismatch 警告 |
 
 ## 12. 启用用户选择的 Copr
