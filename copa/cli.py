@@ -273,45 +273,68 @@ def cmd_install(args: argparse.Namespace) -> int:
                         print("Installation failed")
                     return 0
 
-    # 步骤 4-12: 搜索 Copr
-    if not args.official_only and not args.rpmfusion_only and not args.obs_only:
-        print("Searching Copr repos...")
+    # 步骤 4-16: 搜索 Copr 和 OBS（合并结果）
+    if not args.official_only and not args.rpmfusion_only:
         chroot = dnf.get_chroot()
-        copr_results = engine.search_copr(package, chroot)
+        all_sources = []  # 合并所有来源 [(source, data), ...]
 
-        if copr_results:
-            print(f"\nFound {len(copr_results)} Copr projects:")
-            for i, result in enumerate(copr_results[:10], 1):
-                chroot_status = "✓" if result.supports_chroot else "✗"
-                print(f"  [{i}] {result.project.owner}/{result.project.name}")
-                print(f"      {result.project.description[:50]}...")
-                print(f"      Chroot: {chroot_status} | Risk: {result.risk_level}")
+        # 搜索 Copr
+        if not args.obs_only:
+            print("Searching Copr repos...")
+            copr_results = engine.search_copr(package, chroot)
+            for r in copr_results[:10]:
+                all_sources.append(("copr", r))
+
+        # 搜索 OBS
+        if not args.no_obs and not args.copr_only:
+            print("Searching OBS repos...")
+            obs_results = engine.search_obs(package, fedora_version)
+            for r in obs_results[:10]:
+                all_sources.append(("obs", r))
+
+        if all_sources:
+            print(f"\nFound {len(all_sources)} packages from third-party repos:\n")
+
+            # 统一展示列表
+            for i, (source, data) in enumerate(all_sources, 1):
+                if source == "copr":
+                    chroot_status = "✓" if data.supports_chroot else "✗"
+                    print(f"  [{i:2d}] [Copr] {data.project.owner}/{data.project.name}")
+                    print(f"       {data.project.description[:50]}...")
+                    print(f"       Chroot: {chroot_status} | Risk: {data.risk_level}")
+                else:  # obs
+                    version_status = "✓" if data.has_current_version else "⚠ fallback"
+                    print(f"  [{i:2d}] [OBS]  {data.package.project}/{data.package.name}")
+                    print(f"       {data.package.description[:50]}...")
+                    print(f"       Version: {version_status} | Risk: {data.risk_level}")
 
             # 用户选择
             if args.assumeyes and not args.copr:
-                print("\nError: --copr OWNER/PROJECT required in non-interactive mode")
+                print(f"\n{RED}Error: --copr OWNER/PROJECT required in non-interactive mode{RESET}")
                 return 1
 
             if args.copr:
                 # 使用指定的 Copr
                 owner, project = args.copr.split("/", 1)
                 selected = None
-                for r in copr_results:
-                    if r.project.owner == owner and r.project.name == project:
-                        selected = r
+                selected_source = None
+                for source, data in all_sources:
+                    if source == "copr" and data.project.owner == owner and data.project.name == project:
+                        selected = data
+                        selected_source = "copr"
                         break
                 if not selected:
-                    print(f"\nError: Copr project {args.copr} not found")
+                    print(f"\n{RED}Error: Copr project {args.copr} not found{RESET}")
                     return 1
             else:
                 # 交互选择
-                choice = input(f"{BOLD}\nSelect Copr project [1-N, q to cancel]: {RESET}").strip().lower()
+                choice = input(f"{BOLD}\nSelect package [1-{len(all_sources)}, q to cancel]: {RESET}").strip().lower()
                 if choice in ("q", "quit"):
                     return 0
                 try:
                     idx = int(choice) - 1
-                    if 0 <= idx < len(copr_results):
-                        selected = copr_results[idx]
+                    if 0 <= idx < len(all_sources):
+                        selected_source, selected = all_sources[idx]
                     else:
                         print("Invalid selection")
                         return 1
@@ -319,157 +342,143 @@ def cmd_install(args: argparse.Namespace) -> int:
                     print("Invalid input")
                     return 1
 
-            # 启用 Copr
-            owner_project = f"{selected.project.owner}/{selected.project.name}"
-            print(f"\nEnabling Copr: {owner_project}")
+            # 根据来源执行安装
+            if selected_source == "copr":
+                return _install_from_copr(args, dnf, state, engine, package, selected, chroot)
+            else:
+                return _install_from_obs(args, dnf, obs, state, package, selected, fedora_version)
 
-            if not args.dry_run:
-                if not dnf.copr_enable(owner_project, chroot):
-                    print("Failed to enable Copr")
-                    return 1
+    print(f"\nPackage {package} not found")
+    return 1
 
-                # 刷新缓存
-                print("Refreshing cache...")
-                dnf.makecache()
 
-                # 安装
-                print(f"Installing {package}...")
-                if dnf.install(package):
-                    print("Installation successful!")
+def _install_from_copr(args, dnf, state, engine, package, selected, chroot) -> int:
+    """从 Copr 安装"""
+    owner_project = f"{selected.project.owner}/{selected.project.name}"
+    print(f"\nEnabling Copr: {owner_project}")
 
-                    # 记录状态
-                    state.add_copr_repo(
-                        owner=selected.project.owner,
-                        project=selected.project.name,
-                        repo_id=f"copr:{owner_project}",
-                        chroot=chroot,
-                    )
+    if not args.dry_run:
+        if not dnf.copr_enable(owner_project, chroot):
+            print("Failed to enable Copr")
+            return 1
+
+        print("Refreshing cache...")
+        dnf.makecache()
+
+        print(f"Installing {package}...")
+        if dnf.install(package):
+            print("Installation successful!")
+
+            state.add_copr_repo(
+                owner=selected.project.owner,
+                project=selected.project.name,
+                repo_id=f"copr:{owner_project}",
+                chroot=chroot,
+            )
+            state.save()
+
+            if not args.keep_copr:
+                print(f"{BOLD}\nKeep Copr repo {owner_project}?{RESET}")
+                print("  [1] Keep enabled")
+                print("  [2] Disable repo [default]")
+                print("  [3] Remove repo file")
+                choice = input(f"{BOLD}Select [1/2/3]: {RESET}").strip()
+
+                if choice == "1":
+                    print("Keeping enabled")
+                elif choice == "3":
+                    print("Removing repo file...")
+                    dnf.copr_remove(owner_project)
+                    state.remove_copr_repo(selected.project.owner, selected.project.name)
                     state.save()
+                else:
+                    print("Disabling repo...")
+                    dnf.copr_disable(owner_project)
+        else:
+            print("Installation failed")
+            print("Rollback: Disabling Copr repo...")
+            dnf.copr_disable(owner_project)
+            return 1
+    else:
+        print("[dry-run] Will execute:")
+        print(f"  sudo dnf5 copr enable {owner_project} {chroot}")
+        print(f"  sudo dnf5 makecache --refresh")
+        print(f"  sudo dnf5 install {package}")
 
-                    # 询问是否保留
-                    if not args.keep_copr:
-                        print(f"{BOLD}\nKeep Copr repo {owner_project}?{RESET}")
+    return 0
+
+
+def _install_from_obs(args, dnf, obs, state, package, selected, fedora_version) -> int:
+    """从 OBS 安装"""
+    # 版本 fallback 警告
+    if not selected.has_current_version and selected.best_repo:
+        print(f"\n{RED}WARNING: Version mismatch!{RESET}")
+        print(f"Package: {package}")
+        print(f"Available for: Fedora {selected.best_repo.fedora_version}")
+        print(f"Your system: Fedora {fedora_version}")
+        print(f"{RED}This package was built for an older Fedora version.")
+        print(f"It may have dependency issues or not work correctly.{RESET}")
+
+        if not args.allow_obs_fallback:
+            from copa.utils import confirm
+            if not confirm(f"{BOLD}Continue anyway?{RESET}", default=False):
+                return 0
+
+    if selected.best_repo:
+        print(f"\nDownloading repo file to /etc/yum.repos.d/...")
+        if not args.dry_run:
+            if obs.download_repo_file(selected.package.project, selected.best_repo.repository):
+                print("✓ Repo file downloaded")
+
+                state.add_obs_repo(
+                    project=selected.package.project,
+                    repository=selected.best_repo.repository,
+                    repo_file_name=obs._get_repo_file_name(selected.package.project),
+                    fedora_version=selected.best_repo.fedora_version or "",
+                )
+                state.save()
+
+                print(f"\nWill execute:")
+                print(f"  sudo dnf5 makecache --refresh")
+                print(f"  sudo dnf5 install {package}")
+
+                from copa.utils import confirm
+                if args.assumeyes or confirm(f"{BOLD}\nPress Enter to install{RESET}", default=True):
+                    print("Refreshing cache...")
+                    dnf.makecache()
+
+                    print(f"Installing {package}...")
+                    if dnf.install(package):
+                        print("Installation successful!")
+
+                        print(f"{BOLD}\nKeep OBS repo {selected.package.project}?{RESET}")
                         print("  [1] Keep enabled")
                         print("  [2] Disable repo [default]")
                         print("  [3] Remove repo file")
                         choice = input(f"{BOLD}Select [1/2/3]: {RESET}").strip()
-                else:
-                    print("Installation failed")
-                    # 回滚: 禁用新启用的 Copr
-                    print("Rollback: Disabling Copr repo...")
-                    dnf.copr_disable(owner_project)
-                    return 1
-            else:
-                print("[dry-run] Will execute:")
-                print(f"  sudo dnf5 copr enable {owner_project} {chroot}")
-                print(f"  sudo dnf5 makecache --refresh")
-                print(f"  sudo dnf5 install {package}")
 
-            return 0
-
-    # 步骤 13-16: 搜索 OBS
-    if not args.no_obs and not args.official_only and not args.rpmfusion_only and not args.copr_only:
-        print("Searching OBS repos...")
-        obs_results = engine.search_obs(package, fedora_version)
-
-        if obs_results:
-            print(f"\nFound {len(obs_results)} OBS projects:")
-            for i, result in enumerate(obs_results[:5], 1):
-                version_status = "✓" if result.has_current_version else "⚠ fallback"
-                print(f"  [{i}] {result.package.project}/{result.package.name}")
-                print(f"      {result.package.description[:50]}...")
-                print(f"      Version: {version_status} | Risk: {result.risk_level}")
-
-            # 用户选择
-            choice = input(f"{BOLD}\nSelect OBS project [1-N, q to cancel]: {RESET}").strip().lower()
-            if choice in ("q", "quit"):
-                return 0
-
-            try:
-                idx = int(choice) - 1
-                if 0 <= idx < len(obs_results):
-                    selected = obs_results[idx]
-                else:
-                    print("Invalid selection")
-                    return 1
-            except ValueError:
-                print("Invalid input")
-                return 1
-
-            # 版本 fallback 警告
-            if not selected.has_current_version and selected.best_repo:
-                print(f"\n{RED}WARNING: Version mismatch!{RESET}")
-                print(f"Package: {package}")
-                print(f"Available for: Fedora {selected.best_repo.fedora_version}")
-                print(f"Your system: Fedora {fedora_version}")
-                print(f"{RED}This package was built for an older Fedora version.")
-                print(f"It may have dependency issues or not work correctly.{RESET}")
-
-                if not args.allow_obs_fallback:
-                    if not confirm(f"{BOLD}Continue anyway?{RESET}", default=False):
-                        return 0
-
-            # 下载 repo 文件
-            if selected.best_repo:
-                print(f"\nDownloading repo file to /etc/yum.repos.d/...")
-                if not args.dry_run:
-                    if obs.download_repo_file(selected.package.project, selected.best_repo.repository):
-                        print("✓ Repo file downloaded")
-
-                        # 记录状态
-                        state.add_obs_repo(
-                            project=selected.package.project,
-                            repository=selected.best_repo.repository,
-                            repo_file_name=obs._get_repo_file_name(selected.package.project),
-                            fedora_version=selected.best_repo.fedora_version or "",
-                        )
-                        state.save()
-
-                        # 询问是否安装
-                        print(f"\nWill execute:")
-                        print(f"  sudo dnf5 makecache --refresh")
-                        print(f"  sudo dnf5 install {package}")
-
-                        if args.assumeyes or confirm(f"{BOLD}\nPress Enter to install{RESET}", default=True):
-                            print("Refreshing cache...")
-                            dnf.makecache()
-
-                            print(f"Installing {package}...")
-                            if dnf.install(package):
-                                print("Installation successful!")
-
-                                # 询问是否保留
-                                print(f"{BOLD}\nKeep OBS repo {selected.package.project}?{RESET}")
-                                print("  [1] Keep enabled")
-                                print("  [2] Disable repo [default]")
-                                print("  [3] Remove repo file")
-                                choice = input(f"{BOLD}Select [1/2/3]: {RESET}").strip()
-
-                                if choice == "1":
-                                    print("Keeping enabled")
-                                elif choice == "3":
-                                    print("Removing repo file...")
-                                    obs.remove_repo_file(selected.package.project)
-                                    state.remove_obs_repo(selected.package.project)
-                                    state.save()
-                                else:
-                                    print("Disabling repo...")
-                                    obs.disable_repo(selected.package.project)
-                            else:
-                                print("Installation failed")
+                        if choice == "1":
+                            print("Keeping enabled")
+                        elif choice == "3":
+                            print("Removing repo file...")
+                            obs.remove_repo_file(selected.package.project)
+                            state.remove_obs_repo(selected.package.project)
+                            state.save()
+                        else:
+                            print("Disabling repo...")
+                            obs.disable_repo(selected.package.project)
                     else:
-                        print("✗ Failed to download repo file")
-                        return 1
-                else:
-                    print("[dry-run] Will execute:")
-                    print(f"  Download repo: {obs.get_repo_file_url(selected.package.project, selected.best_repo.repository)}")
-                    print(f"  sudo dnf5 makecache --refresh")
-                    print(f"  sudo dnf5 install {package}")
+                        print("Installation failed")
+            else:
+                print("✗ Failed to download repo file")
+                return 1
+        else:
+            print("[dry-run] Will execute:")
+            print(f"  Download repo: {obs.get_repo_file_url(selected.package.project, selected.best_repo.repository)}")
+            print(f"  sudo dnf5 makecache --refresh")
+            print(f"  sudo dnf5 install {package}")
 
-            return 0
-
-    print(f"\nPackage {package} not found")
-    return 1
+    return 0
 
 
 def cmd_info(args: argparse.Namespace) -> int:
