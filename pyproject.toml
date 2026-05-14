@@ -28,8 +28,8 @@ classifiers = [
 ]
 
 dependencies = [
-    "copr>=1.125",
-    "httpx>=0.27",
+    "copr",
+    "httpx",
 ]
 
 [project.optional-dependencies]
