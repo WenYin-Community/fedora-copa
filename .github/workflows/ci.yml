@@ -73,11 +73,11 @@ jobs:
             python3-setuptools \
             python3-wheel \
             pyproject-rpm-macros \
-            git
+            tar
 
       - name: Create source archive
         run: |
-          git archive --format=tar.gz --prefix=copa-0.1.0/ -o copa-0.1.0.tar.gz HEAD
+          tar czf copa-0.1.0.tar.gz --transform='s,^.,copa-0.1.0,' .
 
       - name: Build RPM
         run: |
@@ -112,11 +112,11 @@ jobs:
             python3-setuptools \
             python3-wheel \
             pyproject-rpm-macros \
-            git
+            tar
 
       - name: Create source archive
         run: |
-          git archive --format=tar.gz --prefix=copa-0.1.0/ -o copa-0.1.0.tar.gz HEAD
+          tar czf copa-0.1.0.tar.gz --transform='s,^.,copa-0.1.0,' .
 
       - name: Build SRPM
         run: |
