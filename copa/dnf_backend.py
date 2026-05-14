@@ -112,12 +112,16 @@ class DnfBackend:
 
         # 跳过标题行
         for line in lines[1:]:
-            parts = line.split()
+            # 使用多个空格作为分隔符
+            # 格式: repo_id<多个空格>repo_name
+            parts = line.split(None, 1)
             if len(parts) >= 2:
-                repo_id = parts[0]
-                repo_name = " ".join(parts[1:])
-                # 判断是否启用（通常 repolist --enabled 只显示启用的）
+                repo_id = parts[0].strip()
+                repo_name = parts[1].strip()
                 repos.append(Repo(id=repo_id, name=repo_name, enabled=True))
+            elif len(parts) == 1:
+                repo_id = parts[0].strip()
+                repos.append(Repo(id=repo_id, name="", enabled=True))
 
         return repos
 
@@ -135,16 +139,17 @@ class DnfBackend:
 
         for repo in repos:
             repo_id_lower = repo.id.lower()
-            if "fedora" in repo_id_lower or "updates" in repo_id_lower:
-                categorized["fedora"].append(repo.id)
+            # 优先检查更具体的条件
+            if repo_id_lower.startswith("copr:") or repo_id_lower.startswith("coprdep:"):
+                categorized["copr"].append(repo.id)
             elif "rpmfusion" in repo_id_lower:
                 categorized["rpmfusion"].append(repo.id)
             elif "terra" in repo_id_lower:
                 categorized["terra"].append(repo.id)
-            elif "copr" in repo_id_lower:
-                categorized["copr"].append(repo.id)
-            elif "obs" in repo_id_lower or "opensuse" in repo_id_lower:
+            elif repo_id_lower.startswith("home_") or repo_id_lower.startswith("home:"):
                 categorized["obs"].append(repo.id)
+            elif "fedora" in repo_id_lower or "updates" in repo_id_lower:
+                categorized["fedora"].append(repo.id)
             else:
                 categorized["other"].append(repo.id)
 

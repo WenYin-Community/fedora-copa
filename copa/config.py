@@ -124,4 +124,102 @@ class Config:
         """保存配置文件"""
         config_path = path or DEFAULT_CONFIG_PATH
         config_path.parent.mkdir(parents=True, exist_ok=True)
-        # TODO: 实现保存逻辑
+
+        # 使用简单字符串格式保存
+        lines = ["# copa configuration file\n"]
+
+        lines.append("[search]")
+        lines.append(f"enable_fedora = {str(self.search.enable_fedora).lower()}")
+        lines.append(f"enable_rpmfusion = {str(self.search.enable_rpmfusion).lower()}")
+        lines.append(f"enable_terra_if_present = {str(self.search.enable_terra_if_present).lower()}")
+        lines.append(f"enable_copr = {str(self.search.enable_copr).lower()}")
+        patterns = ', '.join(f'"{p}"' for p in self.search.terra_repo_patterns)
+        lines.append(f"terra_repo_patterns = [{patterns}]")
+        lines.append("")
+
+        lines.append("[install]")
+        lines.append(f'default_copr_post_action = "{self.install.default_copr_post_action}"')
+        lines.append(f"default_chroot_auto_detect = {str(self.install.default_chroot_auto_detect).lower()}")
+        lines.append(f"strict_selected_repo = {str(self.install.strict_selected_repo).lower()}")
+        lines.append(f"single_package_only = {str(self.install.single_package_only).lower()}")
+        lines.append("")
+
+        lines.append("[backend]")
+        lines.append(f"prefer_dnf5 = {str(self.backend.prefer_dnf5).lower()}")
+        lines.append(f"fallback_to_dnf = {str(self.backend.fallback_to_dnf).lower()}")
+        lines.append(f"require_copr_cli = {str(self.backend.require_copr_cli).lower()}")
+        lines.append("")
+
+        lines.append("[ui]")
+        lines.append(f'language = "{self.ui.language}"')
+        lines.append(f"json = {str(self.ui.json).lower()}")
+        lines.append("")
+
+        lines.append("[risk]")
+        lines.append(f"block_mock_only = {str(self.risk.block_mock_only).lower()}")
+        lines.append(f"block_do_not_use = {str(self.risk.block_do_not_use).lower()}")
+        lines.append(f"warn_experimental = {str(self.risk.warn_experimental).lower()}")
+
+        with open(config_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+
+    @classmethod
+    def generate_example(cls, path: Optional[Path] = None) -> None:
+        """生成示例配置文件"""
+        config_path = path or DEFAULT_CONFIG_PATH
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+
+        example = """# copa configuration file
+# Location: ~/.config/copa/config.toml
+
+[search]
+# Enable/disable search sources
+enable_fedora = true
+enable_rpmfusion = true
+enable_terra_if_present = true
+enable_copr = true
+
+# Terra repo patterns to match
+terra_repo_patterns = ["terra*"]
+
+[install]
+# Default action after installing from Copr: "disable", "keep", "remove"
+default_copr_post_action = "disable"
+
+# Auto-detect chroot for Copr enable
+default_chroot_auto_detect = true
+
+# Strictly limit package to selected repo source
+strict_selected_repo = true
+
+# Only install single package at a time
+single_package_only = true
+
+[backend]
+# Prefer dnf5 over dnf
+prefer_dnf5 = true
+
+# Fallback to dnf if dnf5 not available
+fallback_to_dnf = true
+
+# Require copr-cli for Copr operations
+require_copr_cli = true
+
+[ui]
+# Language: "auto", "en", "zh"
+language = "auto"
+
+# Output in JSON format
+json = false
+
+[risk]
+# Block packages with these risk words
+block_mock_only = true
+block_do_not_use = true
+
+# Warn about experimental packages
+warn_experimental = true
+"""
+
+        with open(config_path, "w", encoding="utf-8") as f:
+            f.write(example)

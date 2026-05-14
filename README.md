@@ -18,13 +18,21 @@ Supported package sources:
 4. **Copr** - Fedora community build service
 5. **openSUSE OBS** - cross-distro build service (with version fallback)
 
+## Features
+
+- **Multi-keyword AND search** - `copa search ghostty terminal` matches packages containing both words
+- **Unified third-party repo management** - `copa repo list/enable/disable/remove`
+- **Version fallback** - OBS packages from older Fedora versions with risk warning
+- **Post-install strategy** - disable/remove repo after installation
+- **Risk assessment** - automatic risk scoring for Copr/OBS packages
+
 ## Installation
 
 ### From source
 
 ```bash
-git clone https://github.com/yourusername/copa.git
-cd copa
+git clone https://github.com/WenYin-Community/fedora-copa.git
+cd fedora-copa
 pip install --user .
 ```
 
@@ -49,7 +57,13 @@ copa doctor
 ### Search packages
 
 ```bash
+# Single keyword
 copa search ghostty
+
+# Multiple keywords (AND logic)
+copa search ghostty terminal
+
+# Search specific sources
 copa search --official-only vim
 copa search --copr-only firefox
 ```
@@ -76,16 +90,62 @@ copa install --dry-run ghostty
 copa -y install --copr owner/project ghostty
 ```
 
-### Manage Copr repos
+### Package info
 
 ```bash
-copa copr list
-copa copr enable owner/project
-copa copr disable owner/project
-copa copr remove owner/project
+# Show package info
+copa info ghostty
+
+# Show Copr project info
+copa info owner/project
+```
+
+### List packages
+
+```bash
+# List third-party repos managed by copa
+copa list
+
+# List packages in Copr project
+copa list --packages owner/project
+```
+
+### Manage third-party repos
+
+```bash
+# List all third-party repos (Copr + OBS)
+copa repo list
+
+# Enable repo
+copa repo enable copr:owner/project
+copa repo enable obs:project
+
+# Disable repo
+copa repo disable copr:owner/project
+copa repo disable obs:project
+
+# Remove repo
+copa repo remove copr:owner/project
+copa repo remove obs:project
+```
+
+### Audit repos
+
+```bash
+# Check health of third-party repos
+copa audit
 ```
 
 ## Command Options
+
+### search command
+
+| Option | Description |
+|--------|-------------|
+| `keyword [keyword ...]` | Search keywords (AND logic) |
+| `--official-only` | Search Fedora official repos only |
+| `--rpmfusion-only` | Search RPM Fusion only |
+| `--copr-only` | Search Copr only |
 
 ### install command
 
@@ -102,12 +162,21 @@ copa copr remove owner/project
 | `--dry-run` | Show operations without executing |
 | `-y, --assumeyes` | Auto confirm |
 
+### repo command
+
+| Subcommand | Description |
+|------------|-------------|
+| `list` | List all third-party repos |
+| `enable REPO` | Enable repo (format: `copr:owner/project` or `obs:project`) |
+| `disable REPO` | Disable repo |
+| `remove REPO` | Remove repo |
+
 ### Global options
 
 | Option | Description |
 |--------|-------------|
 | `-V, --version` | Show version |
-| `-v, --verbose` | Verbose output |
+| `-h, --help` | Show help |
 
 ## Post-install Strategy
 
@@ -131,25 +200,6 @@ OBS search supports version fallback:
 - If current Fedora version has no matching package, tries previous version
 - Maximum 2 version fallback
 - Explicit risk warning when version mismatch
-
-## Configuration File
-
-Config file location: `~/.config/copa/config.toml`
-
-```toml
-[search]
-enable_fedora = true
-enable_rpmfusion = true
-enable_terra_if_present = true
-enable_copr = true
-
-[install]
-default_copr_post_action = "disable"
-
-[backend]
-prefer_dnf5 = true
-fallback_to_dnf = true
-```
 
 ## State File
 
@@ -180,3 +230,4 @@ GPL-2.0-or-later
 - [Fedora Copr](https://copr.fedorainfracloud.org/) - Fedora community build service
 - [openSUSE Build Service](https://build.opensuse.org/) - Cross-distro build service
 - [DNF5](https://github.com/rpm-software-management/dnf5) - Next-gen package manager
+- [paru](https://github.com/Morganamilo/paru) - AUR helper (search logic inspiration)

@@ -1185,3 +1185,49 @@ MVP 建议只包含：
 8. MVP 先用 JSON 保存状态。
 9. `copr-cli` 作为硬依赖。
 10. MVP 先支持单包安装，暂不支持一次安装多个包。
+
+## 24. 当前实施状态（2025-05-14）
+
+### 已完成功能
+
+| 功能 | 命令/选项 | 状态 |
+|------|-----------|------|
+| 环境检查 | `copa doctor` | ✅ |
+| 多关键词搜索 | `copa search ghostty terminal` | ✅ |
+| 安装流程 | `copa install <pkg>` | ✅ |
+| 包信息查询 | `copa info <pkg>` | ✅ |
+| 包列表 | `copa list --packages owner/project` | ✅ |
+| 仓库管理 | `copa repo list/enable/disable/remove` | ✅ |
+| 仓库审计 | `copa audit` | ✅ |
+| Copr 搜索 | Copr API 集成 | ✅ |
+| OBS 搜索 | OBS REST API 集成 | ✅ |
+| 版本 fallback | OBS 包版本不匹配警告 | ✅ |
+| 风险评估 | 风险词识别 + chroot 检查 | ✅ |
+| 安装后策略 | 禁用/保留/删除仓库 | ✅ |
+| Dry-run 模式 | `--dry-run` | ✅ |
+| 状态文件 | `~/.local/share/copa/state.json` | ✅ |
+| RPM spec | `rpm/copa.spec` | ✅ |
+
+### 未完成功能
+
+| 功能 | 优先级 | 说明 |
+|------|--------|------|
+| `--json` 输出 | 低 | 机器可读格式 |
+| `copa repoquery` | 低 | 查询包依赖 |
+| `copa provides` | 低 | 查找提供特定文件的包 |
+| 配置文件生效 | 中 | `~/.config/copa/config.toml` |
+| shell completion | 低 | bash/zsh/fish 补全 |
+| man page | 低 | 手册页 |
+| 排序功能 | 低 | 按投票数/流行度排序 |
+| 正则搜索 | 低 | `-x` 参数 |
+| 多包安装 | 低 | 一次安装多个包 |
+| Ctrl+C 中断处理 | 中 | 清理临时状态 |
+
+### 搜索匹配逻辑
+
+参考 paru 实现，采用以下匹配规则：
+
+- **匹配方式**：子串包含（`contains`）
+- **多关键词**：AND 逻辑（所有词必须同时匹配）
+- **搜索字段**：包名、项目名、Owner、描述
+- **过滤**：客户端二次过滤确保精确性

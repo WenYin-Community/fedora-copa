@@ -30,7 +30,7 @@ def create_parser() -> argparse.ArgumentParser:
 
     # search 命令
     search_parser = subparsers.add_parser("search", help="Search packages")
-    search_parser.add_argument("keyword", help="Search keyword")
+    search_parser.add_argument("keyword", nargs="+", help="Search keywords (AND logic)")
     search_parser.add_argument("--official-only", action="store_true", help="Search Fedora official repos only")
     search_parser.add_argument("--rpmfusion-only", action="store_true", help="Search RPM Fusion only")
     search_parser.add_argument("--copr-only", action="store_true", help="Search Copr only")
@@ -58,21 +58,21 @@ def create_parser() -> argparse.ArgumentParser:
     list_parser = subparsers.add_parser("list", help="List packages")
     list_parser.add_argument("--packages", metavar="OWNER/PROJECT", help="List packages in Copr project")
 
-    # copr 子命令
-    copr_parser = subparsers.add_parser("copr", help="Manage Copr repos")
-    copr_subparsers = copr_parser.add_subparsers(dest="copr_command")
+    # repo 子命令（统一管理 Copr 和 OBS 仓库）
+    repo_parser = subparsers.add_parser("repo", help="Manage third-party repos (Copr/OBS)")
+    repo_subparsers = repo_parser.add_subparsers(dest="repo_command")
 
-    copr_subparsers.add_parser("list", help="List enabled Copr repos")
+    repo_subparsers.add_parser("list", help="List all third-party repos")
 
-    copr_enable = copr_subparsers.add_parser("enable", help="Enable Copr repo")
-    copr_enable.add_argument("repo", help="owner/project format repo name")
-    copr_enable.add_argument("chroot", nargs="?", help="chroot (e.g. fedora-43-x86_64)")
+    repo_enable = repo_subparsers.add_parser("enable", help="Enable repo")
+    repo_enable.add_argument("repo", help="Repo name: copr:owner/project or obs:project")
+    repo_enable.add_argument("chroot", nargs="?", help="chroot for Copr (e.g. fedora-43-x86_64)")
 
-    copr_disable = copr_subparsers.add_parser("disable", help="Disable Copr repo")
-    copr_disable.add_argument("repo", help="owner/project format repo name")
+    repo_disable = repo_subparsers.add_parser("disable", help="Disable repo")
+    repo_disable.add_argument("repo", help="Repo name: copr:owner/project or obs:project")
 
-    copr_remove = copr_subparsers.add_parser("remove", help="Remove Copr repo")
-    copr_remove.add_argument("repo", help="owner/project format repo name")
+    repo_remove = repo_subparsers.add_parser("remove", help="Remove repo")
+    repo_remove.add_argument("repo", help="Repo name: copr:owner/project or obs:project")
 
     # doctor 命令
     subparsers.add_parser("doctor", help="Check system environment and dependencies")
@@ -84,12 +84,13 @@ def create_parser() -> argparse.ArgumentParser:
 
 
 def cmd_search(args: argparse.Namespace) -> int:
-    """search 命令实现"""
+    """search 命令实现 - 支持多关键词 AND 逻辑"""
     from copa.dnf_backend import DnfBackend
     from copa.copr_backend import CoprBackend
     from copa.search import SearchEngine
 
-    keyword = args.keyword
+    keywords = [k.lower() for k in args.keyword]
+    search_query = " ".join(args.keyword)
 
     # 初始化后端
     dnf = DnfBackend()
@@ -99,7 +100,7 @@ def cmd_search(args: argparse.Namespace) -> int:
     # 获取已启用仓库
     enabled_repos = dnf.get_enabled_repos()
 
-    print(f"Searching: {keyword}\n")
+    print(f"Searching: {search_query}\n")
 
     # 第三方源风险提示
     if not args.official_only:
@@ -110,7 +111,9 @@ def cmd_search(args: argparse.Namespace) -> int:
     # 搜索 Fedora 官方源
     if not args.copr_only:
         print("Searching Fedora official repos...")
-        fedora_results = dnf.search_in_repos(keyword, enabled_repos["fedora"])
+        fedora_results = dnf.search_in_repos(search_query, enabled_repos["fedora"])
+        # 客户端过滤：AND 逻辑
+        fedora_results = _filter_by_keywords(fedora_results, keywords, match_desc=True)
         if fedora_results:
             print(f"  Found {len(fedora_results)} results:")
             for pkg in fedora_results[:5]:
@@ -121,7 +124,8 @@ def cmd_search(args: argparse.Namespace) -> int:
     # 搜索 RPM Fusion
     if not args.official_only and not args.copr_only and enabled_repos["rpmfusion"]:
         print("Searching RPM Fusion...")
-        rpmfusion_results = dnf.search_in_repos(keyword, enabled_repos["rpmfusion"])
+        rpmfusion_results = dnf.search_in_repos(search_query, enabled_repos["rpmfusion"])
+        rpmfusion_results = _filter_by_keywords(rpmfusion_results, keywords, match_desc=True)
         if rpmfusion_results:
             print(f"  Found {len(rpmfusion_results)} results:")
             for pkg in rpmfusion_results[:5]:
@@ -132,7 +136,8 @@ def cmd_search(args: argparse.Namespace) -> int:
     # 搜索 Terra
     if not args.official_only and not args.copr_only and enabled_repos["terra"]:
         print("Searching Terra...")
-        terra_results = dnf.search_in_repos(keyword, enabled_repos["terra"])
+        terra_results = dnf.search_in_repos(search_query, enabled_repos["terra"])
+        terra_results = _filter_by_keywords(terra_results, keywords, match_desc=True)
         if terra_results:
             print(f"  Found {len(terra_results)} results:")
             for pkg in terra_results[:5]:
@@ -144,7 +149,9 @@ def cmd_search(args: argparse.Namespace) -> int:
     if not args.official_only and not args.rpmfusion_only:
         print("Searching Copr repos...")
         chroot = dnf.get_chroot()
-        copr_results = engine.search_copr(keyword, chroot)
+        copr_results = engine.search_copr(search_query, chroot)
+        # 客户端过滤：AND 逻辑
+        copr_results = _filter_copr_by_keywords(copr_results, keywords)
         if copr_results:
             print(f"  Found {len(copr_results)} Copr projects:")
             for i, result in enumerate(copr_results[:10], 1):
@@ -155,6 +162,36 @@ def cmd_search(args: argparse.Namespace) -> int:
             print()
 
     return 0
+
+
+def _filter_by_keywords(packages, keywords: list[str], match_desc: bool = True):
+    """按关键词过滤包 - AND 逻辑"""
+    def matches(pkg):
+        name_lower = pkg.name.lower()
+        desc_lower = pkg.summary.lower() if hasattr(pkg, 'summary') else ""
+        for kw in keywords:
+            name_match = kw in name_lower
+            desc_match = match_desc and kw in desc_lower
+            if not name_match and not desc_match:
+                return False
+        return True
+    return [p for p in packages if matches(p)]
+
+
+def _filter_copr_by_keywords(results, keywords: list[str]):
+    """按关键词过滤 Copr 结果 - AND 逻辑"""
+    def matches(result):
+        name_lower = result.project.name.lower()
+        owner_lower = result.project.owner.lower()
+        desc_lower = result.project.description.lower()
+        for kw in keywords:
+            name_match = kw in name_lower
+            owner_match = kw in owner_lower
+            desc_match = kw in desc_lower
+            if not name_match and not owner_match and not desc_match:
+                return False
+        return True
+    return [r for r in results if matches(r)]
 
 
 def cmd_install(args: argparse.Namespace) -> int:
@@ -483,35 +520,281 @@ def _install_from_obs(args, dnf, obs, state, package, selected, fedora_version) 
 
 def cmd_info(args: argparse.Namespace) -> int:
     """info 命令实现"""
-    print(f"Info: {args.package}")
-    # TODO: 实现信息查询
+    from copa.dnf_backend import DnfBackend
+    from copa.copr_backend import CoprBackend
+
+    package = args.package
+    dnf = DnfBackend()
+    copr = CoprBackend()
+
+    print(f"Package: {package}\n")
+
+    # 检查是否为 owner/project 格式
+    if "/" in package:
+        # Copr 项目详情
+        owner, project = package.split("/", 1)
+        print(f"Fetching Copr project info: {owner}/{project}")
+        project_info = copr.get_project(owner, project)
+        if project_info:
+            print(f"  Name: {project_info.name}")
+            print(f"  Owner: {project_info.owner}")
+            print(f"  Description: {project_info.description[:200]}")
+            print(f"  Supported chroots: {', '.join(project_info.chroots[:5])}")
+            if project_info.instructions:
+                print(f"  Instructions: {project_info.instructions[:200]}")
+        else:
+            print(f"  Project not found: {owner}/{project}")
+            return 1
+    else:
+        # 软件包详情
+        print("Searching in enabled repos...")
+        enabled_repos = dnf.get_enabled_repos()
+        all_repo_ids = (
+            enabled_repos["fedora"]
+            + enabled_repos["rpmfusion"]
+            + enabled_repos["terra"]
+        )
+
+        if all_repo_ids:
+            results = dnf.search_in_repos(package, all_repo_ids)
+            if results:
+                print(f"\nFound {len(results)} packages:")
+                for pkg in results[:10]:
+                    print(f"\n  {pkg.name}-{pkg.evr}")
+                    print(f"    Arch: {pkg.arch}")
+                    print(f"    Repo: {pkg.repo}")
+                    print(f"    Summary: {pkg.summary}")
+            else:
+                print(f"\nPackage '{package}' not found in enabled repos")
+
+        # 搜索 Copr
+        print("\nSearching Copr projects...")
+        chroot = dnf.get_chroot()
+        copr_results = copr.search_projects(package)
+        if copr_results:
+            print(f"Found {len(copr_results)} Copr projects:")
+            for proj in copr_results[:5]:
+                print(f"  - {proj.owner}/{proj.name}: {proj.description[:60]}...")
+
     return 0
 
 
 def cmd_list(args: argparse.Namespace) -> int:
     """list 命令实现"""
+    from copa.dnf_backend import DnfBackend
+    from copa.copr_backend import CoprBackend
+    from copa.state import AppState
+
+    dnf = DnfBackend()
+    copr = CoprBackend()
+    state = AppState.load()
+
     if args.packages:
-        print(f"Listing packages: {args.packages}")
+        # 列出指定 Copr 项目的包
+        owner, project = args.packages.split("/", 1)
+        print(f"Listing packages in {owner}/{project}:\n")
+
+        packages = copr.list_packages(owner, project)
+        if packages:
+            for pkg in packages:
+                print(f"  {pkg.name}")
+                if pkg.latest_version:
+                    print(f"    Latest: {pkg.latest_version}")
+        else:
+            print("  No packages found or project does not exist")
+            return 1
     else:
-        print("Listing all installed packages")
-    # TODO: 实现列表逻辑
+        # 列出已启用的 Copr 和 OBS 仓库
+        print("Enabled third-party repos:\n")
+
+        # 从状态文件读取
+        if state.copr_repos:
+            print("Copr repos:")
+            for repo in state.copr_repos:
+                status = "enabled" if repo.enabled_by_copa else "system"
+                print(f"  - {repo.owner}/{repo.project} [{status}]")
+                if repo.installed_packages:
+                    print(f"    Packages: {', '.join(repo.installed_packages)}")
+
+        if state.obs_repos:
+            print("\nOBS repos:")
+            for repo in state.obs_repos:
+                status = "enabled" if repo.enabled_by_copa else "system"
+                print(f"  - {repo.project} [{status}]")
+                if repo.installed_packages:
+                    print(f"    Packages: {', '.join(repo.installed_packages)}")
+
+        if not state.copr_repos and not state.obs_repos:
+            print("  No third-party repos managed by copa")
+
     return 0
 
 
-def cmd_copr(args: argparse.Namespace) -> int:
-    """copr 子命令实现"""
-    if args.copr_command == "list":
-        print("Listing Copr repos")
-    elif args.copr_command == "enable":
-        print(f"Enabling Copr: {args.repo}")
-    elif args.copr_command == "disable":
-        print(f"Disabling Copr: {args.repo}")
-    elif args.copr_command == "remove":
-        print(f"Removing Copr: {args.repo}")
-    else:
-        print("Please specify a copr subcommand")
+def cmd_repo(args: argparse.Namespace) -> int:
+    """repo 子命令实现 - 管理 Copr 和 OBS 仓库"""
+    from copa.dnf_backend import DnfBackend
+    from copa.copr_backend import CoprBackend
+    from copa.obs_backend import OBSBackend
+    from copa.state import AppState
+
+    dnf = DnfBackend()
+    copr = CoprBackend()
+    obs = OBSBackend()
+    state = AppState.load()
+
+    if not args.repo_command:
+        print("Please specify a repo subcommand: list, enable, disable, remove")
         return 1
-    # TODO: 实现 copr 管理逻辑
+
+    if args.repo_command == "list":
+        print("Third-party repos:\n")
+
+        # 从系统检测已启用的仓库
+        enabled_repos = dnf.get_enabled_repos()
+
+        # 显示 Copr 仓库
+        copr_repos = enabled_repos.get("copr", [])
+        if copr_repos or state.copr_repos:
+            print("Copr repos:")
+            # 系统中的 Copr 仓库
+            for repo_id in copr_repos:
+                # 解析 repo_id: copr:copr.fedorainfracloud.org:owner:project
+                parts = repo_id.split(":")
+                if len(parts) >= 3:
+                    owner = parts[2] if len(parts) > 2 else ""
+                    project = parts[3] if len(parts) > 3 else ""
+                    if owner and project:
+                        print(f"  {owner}/{project} [system]")
+                        continue
+                print(f"  {repo_id} [system]")
+
+            # copa 管理的 Copr 仓库
+            for repo in state.copr_repos:
+                if f"copr:{repo.owner}/{repo.project}" not in copr_repos:
+                    status = "enabled" if repo.enabled_by_copa else "system"
+                    print(f"  {repo.owner}/{repo.project} [{status}]")
+                    if repo.chroot:
+                        print(f"    Chroot: {repo.chroot}")
+                    if repo.installed_packages:
+                        print(f"    Packages: {', '.join(repo.installed_packages)}")
+
+        # 显示 OBS 仓库
+        obs_repos = enabled_repos.get("obs", [])
+        if obs_repos or state.obs_repos:
+            print("\nOBS repos:")
+            # 系统中的 OBS 仓库
+            for repo_id in obs_repos:
+                print(f"  {repo_id} [system]")
+
+            # copa 管理的 OBS 仓库
+            for repo in state.obs_repos:
+                if f"obs:{repo.project}" not in obs_repos:
+                    status = "enabled" if repo.enabled_by_copa else "system"
+                    print(f"  {repo.project} [{status}]")
+                    if repo.fedora_version:
+                        print(f"    Fedora: {repo.fedora_version}")
+                    if repo.installed_packages:
+                        print(f"    Packages: {', '.join(repo.installed_packages)}")
+
+        if not copr_repos and not obs_repos and not state.copr_repos and not state.obs_repos:
+            print("  No third-party repos found")
+
+        return 0
+
+    # 解析 repo 参数：copr:owner/project 或 obs:project
+    repo_arg = args.repo
+    if repo_arg.startswith("copr:"):
+        repo_type = "copr"
+        repo_name = repo_arg[5:]
+    elif repo_arg.startswith("obs:"):
+        repo_type = "obs"
+        repo_name = repo_arg[4:]
+    else:
+        print(f"{RED}Error: Invalid repo format. Use copr:owner/project or obs:project{RESET}")
+        return 1
+
+    if args.repo_command == "enable":
+        if repo_type == "copr":
+            chroot = args.chroot or dnf.get_chroot()
+            print(f"Enabling Copr repo: {repo_name}")
+            if dnf.copr_enable(repo_name, chroot):
+                print("✓ Copr repo enabled")
+                state.add_copr_repo(
+                    owner=repo_name.split("/")[0],
+                    project=repo_name.split("/")[1],
+                    repo_id=f"copr:{repo_name}",
+                    chroot=chroot,
+                    enabled_by_copa=True,
+                )
+                state.save()
+            else:
+                print("✗ Failed to enable Copr repo")
+                return 1
+        else:  # obs
+            print(f"Enabling OBS repo: {repo_name}")
+            # OBS 需要下载 repo 文件
+            fedora_version = dnf.get_fedora_version()
+            repos = obs.find_fedora_repos(repo_name, fedora_version)
+            if repos:
+                best_repo = repos[0]
+                if obs.download_repo_file(repo_name, best_repo.repository):
+                    print("✓ OBS repo enabled (repo file downloaded)")
+                    state.add_obs_repo(
+                        project=repo_name,
+                        repository=best_repo.repository,
+                        repo_file_name=obs._get_repo_file_name(repo_name),
+                        fedora_version=best_repo.fedora_version or "",
+                        enabled_by_copa=True,
+                    )
+                    state.save()
+                else:
+                    print("✗ Failed to download OBS repo file")
+                    return 1
+            else:
+                print(f"✗ No Fedora repos found for OBS project: {repo_name}")
+                return 1
+
+    elif args.repo_command == "disable":
+        if repo_type == "copr":
+            print(f"Disabling Copr repo: {repo_name}")
+            if dnf.copr_disable(repo_name):
+                print("✓ Copr repo disabled")
+            else:
+                print("✗ Failed to disable Copr repo")
+                return 1
+        else:  # obs
+            print(f"Disabling OBS repo: {repo_name}")
+            if obs.disable_repo(repo_name):
+                print("✓ OBS repo disabled")
+            else:
+                print("✗ Failed to disable OBS repo")
+                return 1
+
+    elif args.repo_command == "remove":
+        if repo_type == "copr":
+            print(f"Removing Copr repo: {repo_name}")
+            if dnf.copr_remove(repo_name):
+                print("✓ Copr repo removed")
+                owner, project = repo_name.split("/", 1)
+                state.remove_copr_repo(owner, project)
+                state.save()
+            else:
+                print("✗ Failed to remove Copr repo")
+                return 1
+        else:  # obs
+            print(f"Removing OBS repo: {repo_name}")
+            if obs.remove_repo_file(repo_name):
+                print("✓ OBS repo removed")
+                state.remove_obs_repo(repo_name)
+                state.save()
+            else:
+                print("✗ Failed to remove OBS repo")
+                return 1
+
+    else:
+        print("Please specify a repo subcommand: list, enable, disable, remove")
+        return 1
+
     return 0
 
 
@@ -621,9 +904,90 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 
 def cmd_audit(args: argparse.Namespace) -> int:
     """audit 命令实现"""
-    print("Auditing Copr repos...")
-    # TODO: 实现审计逻辑
-    return 0
+    from copa.dnf_backend import DnfBackend
+    from copa.copr_backend import CoprBackend
+    from copa.state import AppState
+    from datetime import datetime
+
+    dnf = DnfBackend()
+    copr = CoprBackend()
+    state = AppState.load()
+    fedora_version = dnf.get_fedora_version()
+    chroot = dnf.get_chroot()
+
+    print("Auditing third-party repos...\n")
+
+    issues = []
+
+    # 审计 Copr 仓库
+    if state.copr_repos:
+        print("Copr repos:")
+        for repo in state.copr_repos:
+            print(f"  Checking {repo.owner}/{repo.project}...")
+
+            # 检查项目是否存在
+            project_info = copr.get_project(repo.owner, repo.project)
+            if not project_info:
+                issues.append(f"Copr {repo.owner}/{repo.project}: Project not found or deleted")
+                print(f"    WARNING: Project not found")
+                continue
+
+            # 检查是否支持当前 chroot
+            if chroot not in project_info.chroots:
+                issues.append(f"Copr {repo.owner}/{repo.project}: Does not support {chroot}")
+                print(f"    WARNING: Does not support current chroot ({chroot})")
+
+            # 检查最近构建状态
+            builds = copr.get_builds(repo.owner, repo.project, limit=1)
+            if builds:
+                latest_build = builds[0]
+                if latest_build.state != "succeeded":
+                    issues.append(f"Copr {repo.owner}/{repo.project}: Latest build {latest_build.state}")
+                    print(f"    WARNING: Latest build {latest_build.state}")
+
+                # 检查构建时间
+                if latest_build.ended_on:
+                    build_date = datetime.fromtimestamp(latest_build.ended_on)
+                    days_ago = (datetime.now() - build_date).days
+                    if days_ago > 180:
+                        issues.append(f"Copr {repo.owner}/{repo.project}: Last build {days_ago} days ago")
+                        print(f"    WARNING: Last build was {days_ago} days ago")
+            else:
+                print(f"    No builds found")
+
+            # 检查风险词
+            desc_lower = (project_info.description or "").lower()
+            risk_words = ["testing", "experimental", "do not use", "mock only"]
+            for word in risk_words:
+                if word in desc_lower:
+                    issues.append(f"Copr {repo.owner}/{repo.project}: Contains risk word '{word}'")
+                    print(f"    WARNING: Contains risk word '{word}'")
+                    break
+
+        print()
+
+    # 审计 OBS 仓库
+    if state.obs_repos:
+        print("OBS repos:")
+        for repo in state.obs_repos:
+            print(f"  Checking {repo.project}...")
+
+            # 检查版本匹配
+            if repo.fedora_version and repo.fedora_version != str(fedora_version):
+                issues.append(f"OBS {repo.project}: Built for Fedora {repo.fedora_version}, current is {fedora_version}")
+                print(f"    WARNING: Version mismatch (Fedora {repo.fedora_version} vs {fedora_version})")
+
+        print()
+
+    # 输出总结
+    if issues:
+        print(f"Found {len(issues)} issues:")
+        for i, issue in enumerate(issues, 1):
+            print(f"  {i}. {issue}")
+    else:
+        print("No issues found. All repos look healthy.")
+
+    return 0 if not issues else 1
 
 
 def main(argv: Optional[list[str]] = None) -> int:
@@ -640,7 +1004,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         "install": cmd_install,
         "info": cmd_info,
         "list": cmd_list,
-        "copr": cmd_copr,
+        "repo": cmd_repo,
         "doctor": cmd_doctor,
         "audit": cmd_audit,
     }

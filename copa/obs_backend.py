@@ -91,9 +91,10 @@ class OBSBackend:
             return []
 
     def search_packages(self, query: str, limit: int = 20) -> list[OBSPackage]:
-        """搜索包"""
+        """搜索包 - 子字符串匹配"""
         try:
-            root = self._get("/search/package", {"match": f"@name='{query}'"})
+            # 使用 contains() 实现子字符串匹配
+            root = self._get("/search/package", {"match": f"contains(@name,'{query}')"})
             packages = []
             for pkg_elem in root.findall(".//package")[:limit]:
                 name = pkg_elem.get("name", "")

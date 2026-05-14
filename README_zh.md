@@ -18,13 +18,21 @@ DNF5 风格的 Fedora Copr 软件包助手。
 4. **Copr** - Fedora 社区构建服务
 5. **openSUSE OBS** - 跨发行版构建服务（支持版本 fallback）
 
+## 特性
+
+- **多关键词 AND 搜索** - `copa search ghostty terminal` 匹配同时包含两个词的包
+- **统一的第三方仓库管理** - `copa repo list/enable/disable/remove`
+- **版本 fallback** - OBS 包版本不匹配时警告
+- **安装后策略** - 安装后自动禁用/删除仓库
+- **风险评估** - 自动评估 Copr/OBS 包的风险等级
+
 ## 安装
 
 ### 从源码安装
 
 ```bash
-git clone https://github.com/yourusername/copa.git
-cd copa
+git clone https://github.com/WenYin-Community/fedora-copa.git
+cd fedora-copa
 pip install --user .
 ```
 
@@ -49,7 +57,13 @@ copa doctor
 ### 搜索软件包
 
 ```bash
+# 单关键词
 copa search ghostty
+
+# 多关键词（AND 逻辑）
+copa search ghostty terminal
+
+# 搜索特定来源
 copa search --official-only vim
 copa search --copr-only firefox
 ```
@@ -76,16 +90,62 @@ copa install --dry-run ghostty
 copa -y install --copr owner/project ghostty
 ```
 
-### 管理 Copr 仓库
+### 查看包信息
 
 ```bash
-copa copr list
-copa copr enable owner/project
-copa copr disable owner/project
-copa copr remove owner/project
+# 显示包信息
+copa info ghostty
+
+# 显示 Copr 项目信息
+copa info owner/project
+```
+
+### 列出包
+
+```bash
+# 列出 copa 管理的第三方仓库
+copa list
+
+# 列出 Copr 项目中的包
+copa list --packages owner/project
+```
+
+### 管理第三方仓库
+
+```bash
+# 列出所有第三方仓库（Copr + OBS）
+copa repo list
+
+# 启用仓库
+copa repo enable copr:owner/project
+copa repo enable obs:project
+
+# 禁用仓库
+copa repo disable copr:owner/project
+copa repo disable obs:project
+
+# 删除仓库
+copa repo remove copr:owner/project
+copa repo remove obs:project
+```
+
+### 审计仓库
+
+```bash
+# 检查第三方仓库健康状态
+copa audit
 ```
 
 ## 命令选项
+
+### search 命令
+
+| 选项 | 说明 |
+|------|------|
+| `keyword [keyword ...]` | 搜索关键词（AND 逻辑） |
+| `--official-only` | 只搜索 Fedora 官方源 |
+| `--rpmfusion-only` | 只搜索 RPM Fusion |
+| `--copr-only` | 只搜索 Copr |
 
 ### install 命令
 
@@ -102,19 +162,28 @@ copa copr remove owner/project
 | `--dry-run` | 只显示将执行的操作 |
 | `-y, --assumeyes` | 自动确认 |
 
+### repo 命令
+
+| 子命令 | 说明 |
+|--------|------|
+| `list` | 列出所有第三方仓库 |
+| `enable REPO` | 启用仓库（格式：`copr:owner/project` 或 `obs:project`） |
+| `disable REPO` | 禁用仓库 |
+| `remove REPO` | 删除仓库 |
+
 ### 全局选项
 
 | 选项 | 说明 |
 |------|------|
 | `-V, --version` | 显示版本 |
-| `-v, --verbose` | 详细输出 |
+| `-h, --help` | 显示帮助 |
 
 ## 安装后策略
 
 安装完成后，`copa` 会询问是否保留 Copr/OBS 仓库：
 
 ```
-Keep Copr repository owner/project enabled for future updates?
+Keep Copr repo owner/project enabled for future updates?
 
 [1] Keep enabled
 [2] Disable repo [default]
@@ -131,25 +200,6 @@ OBS 搜索支持版本 fallback：
 - 如果当前 Fedora 版本没有匹配的包，会尝试上一个版本
 - 最多 fallback 2 个版本
 - 版本不匹配时会明确提示风险
-
-## 配置文件
-
-配置文件位置：`~/.config/copa/config.toml`
-
-```toml
-[search]
-enable_fedora = true
-enable_rpmfusion = true
-enable_terra_if_present = true
-enable_copr = true
-
-[install]
-default_copr_post_action = "disable"
-
-[backend]
-prefer_dnf5 = true
-fallback_to_dnf = true
-```
 
 ## 状态文件
 
@@ -180,3 +230,4 @@ GPL-2.0-or-later
 - [Fedora Copr](https://copr.fedorainfracloud.org/) - Fedora 社区构建服务
 - [openSUSE Build Service](https://build.opensuse.org/) - 跨发行版构建服务
 - [DNF5](https://github.com/rpm-software-management/dnf5) - 下一代包管理器
+- [paru](https://github.com/Morganamilo/paru) - AUR 助手（搜索逻辑参考）
