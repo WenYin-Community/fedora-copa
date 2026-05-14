@@ -73,6 +73,9 @@ jobs:
             python3-setuptools \
             python3-wheel \
             pyproject-rpm-macros \
+            python3-copr \
+            python3-httpx \
+            python3-pytest \
             tar
 
       - name: Create source archive
@@ -115,6 +118,9 @@ jobs:
             python3-setuptools \
             python3-wheel \
             pyproject-rpm-macros \
+            python3-copr \
+            python3-httpx \
+            python3-pytest \
             tar
 
       - name: Create source archive
