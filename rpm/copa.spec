@@ -10,8 +10,10 @@ Source0:        %{url}/archive/v%{version}/%{name}-%{version}.tar.gz
 BuildArch:      noarch
 
 BuildRequires:  python3-devel
+BuildRequires:  python3-pip
 BuildRequires:  python3-setuptools
 BuildRequires:  python3-wheel
+BuildRequires:  python3-pyproject-rpm-macros
 
 Requires:       python3 >= 3.11
 Requires:       python3-copr
@@ -34,11 +36,14 @@ Supported package sources:
 %prep
 %autosetup -n %{name}-%{version}
 
+%generate_buildrequires
+%pyproject_buildrequires
+
 %build
-%py3_build
+%pyproject_wheel
 
 %install
-%py3_install
+%pyproject_install
 
 # Install config directory
 install -d %{buildroot}%{_sysconfdir}/copa
@@ -55,11 +60,14 @@ install -Dm644 completions/copa.bash %{buildroot}%{bash_completions_dir}/copa
 # Install zsh completion
 install -Dm644 completions/_copa %{buildroot}%{zsh_completions_dir}/_copa
 
+%check
+%pytest
+
 %files
 %license LICENSE
 %doc README.md README_zh.md
 %{python3_sitelib}/copa/
-%{python3_sitelib}/copa-%{version}-py%{python3_version}.egg-info/
+%{python3_sitelib}/copa-%{version}.dist-info/
 %{_bindir}/copa
 %{_mandir}/man1/copa.1*
 %{bash_completions_dir}/copa
@@ -72,5 +80,9 @@ install -Dm644 completions/_copa %{buildroot}%{zsh_completions_dir}/_copa
 - Initial package
 - Search packages from Fedora, RPM Fusion, Terra, Copr, OBS
 - Install packages with interactive source selection
+- Regex search support
+- JSON output support
 - Version fallback for OBS packages
 - Post-install repo management (keep/disable/remove)
+- Bash and zsh completion
+- Man page

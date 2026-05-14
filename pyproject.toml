@@ -44,9 +44,9 @@ dev = [
 copa = "copa.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/yourusername/copa"
-Repository = "https://github.com/yourusername/copa"
-Issues = "https://github.com/yourusername/copa/issues"
+Homepage = "https://github.com/WenYin-Community/fedora-copa"
+Repository = "https://github.com/WenYin-Community/fedora-copa"
+Issues = "https://github.com/WenYin-Community/fedora-copa/issues"
 
 [tool.setuptools.packages.find]
 where = ["."]
