@@ -1160,11 +1160,11 @@ Includes:
 
 Includes:
 
-- RPM spec.
-- Copr bootstrap repo.
-- man page.
-- shell completion.
-- README.
+- RPM spec. ✅
+- GitHub Actions CI/CD. ✅
+- man page. ✅
+- shell completion. ✅
+- README. ✅
 - Example config file.
 
 ## 23. Key Decisions of Current Plan
@@ -1200,7 +1200,7 @@ The following issues have been confirmed:
 | OBS search | OBS REST API integration | ✅ |
 | Version fallback | OBS package version mismatch warning | ✅ |
 | Risk assessment | Risk word identification + chroot check | ✅ |
-| Post-install strategy | Disable/keep/remove repo | ✅ |
+| Post-install strategy | Keep repo by default, user can disable/remove | ✅ |
 | Dry-run mode | `--dry-run` | ✅ |
 | State file | `~/.local/share/copa/state.json` | ✅ |
 | RPM spec | `rpm/copa.spec` | ✅ |
@@ -1212,6 +1212,7 @@ The following issues have been confirmed:
 | Man page | `man/copa.1` | ✅ |
 | Ctrl+C handling | Signal handler | ✅ |
 | Tests | 47 unit tests | ✅ |
+| GitHub Actions | CI/CD with lint, test, RPM build | ✅ |
 
 ### Incomplete Features
 

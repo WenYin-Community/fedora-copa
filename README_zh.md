@@ -40,6 +40,13 @@ cd fedora-copa
 pip install --user .
 ```
 
+### 从 RPM 安装
+
+```bash
+# 从 GitHub Releases 下载
+dnf install copa-0.1.0-1.fc44.noarch.rpm
+```
+
 ### 依赖
 
 - Python 3.11+
@@ -321,6 +328,9 @@ pytest
 # 代码检查
 ruff check .
 mypy copa/
+
+# 构建 RPM
+make build
 ```
 
 ## 许可证
