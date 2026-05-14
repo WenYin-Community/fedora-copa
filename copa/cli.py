@@ -94,6 +94,11 @@ def cmd_search(args: argparse.Namespace) -> int:
 
     print(f"搜索: {keyword}\n")
 
+    # 第三方源风险提示
+    if not args.official_only:
+        print("⚠️  注意: 除 Fedora 官方源外，其他来源（RPM Fusion、Terra、Copr、OBS）")
+        print("   均为第三方构建，请自行确认安全风险后决定是否安装。\n")
+
     # 搜索 Fedora 官方源
     if not args.copr_only:
         print("搜索 Fedora 官方仓库...")
@@ -165,6 +170,11 @@ def cmd_install(args: argparse.Namespace) -> int:
     fedora_version = dnf.get_fedora_version()
 
     print(f"安装: {package}\n")
+
+    # 第三方源风险提示
+    if not args.official_only:
+        print("⚠️  注意: 除 Fedora 官方源外，其他来源（RPM Fusion、Terra、Copr、OBS）")
+        print("   均为第三方构建，请自行确认安全风险后决定是否安装。\n")
 
     # Dry-run 模式
     if args.dry_run:
