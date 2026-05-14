@@ -81,12 +81,19 @@ copa copr remove <owner/project>
 2. RPM Fusion
 3. 第三方仓库 Terra，前提是用户已经添加并启用了 Terra repo
 4. Copr
+5. openSUSE Build Service (OBS)
 
 Terra 是可选项：
 
 - 如果用户已添加 Terra repo，则参与搜索。
 - 如果用户未添加 Terra repo，则跳过。
 - `copa` 默认不主动为用户添加 Terra repo。
+
+OBS 作为补充来源：
+
+- OBS 提供跨发行版的软件包构建服务，包含许多 Fedora 未收录的软件。
+- OBS 搜索结果需要用户手动添加 repo 文件，不自动启用。
+- OBS 包的版本可能与当前 Fedora 版本不完全匹配，需要版本 fallback 机制。
 
 ## 5. `copa install` 默认流程
 
@@ -110,6 +117,10 @@ copa install ghostty
 10. 执行 `dnf5 install <package>`。
 11. 安装完成后询问用户是否保留此 Copr。
 12. 如果用户不保留，则删除/移除对应 Copr repo。
+13. 如果 Copr 也没有合适结果，或者用户选择继续搜索 OBS，则搜索 OBS 仓库。
+14. 搜索 OBS 时，展示匹配的项目和包信息。
+15. 提供 OBS repo 文件下载链接，由用户手动添加。
+16. 如果 OBS 包版本与当前 Fedora 版本不匹配，提示用户风险并提供 fallback 版本。
 
 ## 6. 检测已启用仓库
 
@@ -127,6 +138,7 @@ dnf5 repolist --enabled
 | RPM Fusion | repo id 包含 `rpmfusion-free`、`rpmfusion-nonfree` |
 | Terra | repo id 包含 `terra` |
 | Copr | repo id 包含 `copr:` 或 `_copr:` |
+| OBS | repo id 包含 `obs:` 或 `opensuse:` 或文件来自 `download.opensuse.org` |
 
 ## 7. Fedora 官方仓库搜索
 
@@ -304,6 +316,117 @@ sudo dnf5 copr disable <owner/project>
 sudo dnf5 copr remove <owner/project>
 ```
 
+## 11.5 OBS 搜索流程
+
+如果 Fedora / RPM Fusion / Terra / Copr 都没有合适结果，或者用户主动使用 `--obs-only`，进入 OBS 搜索。
+
+### OBS 简介
+
+openSUSE Build Service (OBS) 是一个跨发行版的软件包构建服务，提供多种 Linux 发行版的软件包，包括 Fedora。
+
+- **API Base URL**: `https://api.opensuse.org`
+- **CLI 工具**: `osc`（Python 编写，可通过 pip 或 dnf 安装）
+- **匿名访问**: 只读操作不需要认证
+
+### OBS 搜索实现
+
+使用 OBS REST API 搜索包：
+
+```bash
+# 搜索项目
+curl -H "Accept: application/xml; charset=utf-8" \
+  "https://api.opensuse.org/search/project?match=contains(@name,'ghostty')"
+
+# 搜索包
+curl -H "Accept: application/xml; charset=utf-8" \
+  "https://api.opensuse.org/search/package?match=@name='ghostty'"
+
+# 查询 Fedora 版本的二进制包
+curl -H "Accept: application/xml; charset=utf-8" \
+  "https://api.opensuse.org/search/released/binary?match=name='ghostty'+and+repository='Fedora_43'"
+```
+
+### 候选列表展示
+
+```text
+OBS packages matching "ghostty":
+
+[1] home:user1/ghostty
+    Project: home:user1
+    Description: Ghostty terminal emulator
+    Fedora 43 x86_64: yes
+    Version: 1.0.0
+    Risk: normal
+
+[2] science/ghostty
+    Project: science
+    Description: Scientific computing terminal
+    Fedora 42 x86_64: yes (fallback)
+    Version: 0.9.5
+    Risk: version mismatch - Fedora 42 package on Fedora 43
+
+Select an OBS package [1-2, q to cancel]:
+```
+
+### 版本匹配与 Fallback 策略
+
+**核心原则**: 优先使用与当前 Fedora 版本匹配的包，如果没有则 fallback 到上一个版本，并明确提示风险。
+
+版本匹配逻辑：
+
+1. 查询当前 Fedora 版本（如 `fedora-43`）的包
+2. 如果没有，查询上一个版本（如 `fedora-42`）的包
+3. 如果找到 fallback 版本，**必须**向用户提示风险
+
+风险提示示例：
+
+```text
+⚠️  WARNING: Version mismatch detected!
+
+Package: ghostty
+Available for: Fedora 42 x86_64
+Your system: Fedora 43 x86_64
+
+This package was built for an older Fedora version. It may:
+- Have unmet dependencies
+- Not work correctly with your system libraries
+- Cause system instability
+
+Do you want to proceed anyway? [y/N]:
+```
+
+Fallback 版本限制：
+
+- 最多 fallback 2 个版本（如 Fedora 43 → 42 → 41）
+- 超过 2 个版本差距的包不推荐使用
+- Rawhide 不参与 fallback，必须精确匹配
+
+### OBS Repo 添加方式
+
+OBS 仓库需要用户手动添加，不自动启用：
+
+```text
+To install from OBS, you need to add the repository manually:
+
+  sudo dnf config-manager --add-repo https://download.opensuse.org/repositories/home:/user1/Fedora_43/home:user1.repo
+
+Then install the package:
+
+  sudo dnf5 install ghostty
+
+Would you like to copy these commands to clipboard? [y/N]:
+```
+
+### OBS 与 Copr 的区别
+
+| 特性 | Copr | OBS |
+|------|------|-----|
+| 仓库管理 | `dnf5 copr enable/disable` | 手动添加 repo 文件 |
+| 搜索 | Copr API | OBS API |
+| 版本匹配 | chroot 机制 | repository 名称匹配 |
+| 自动化程度 | 高（可自动启用） | 低（需手动操作） |
+| 风险提示 | 风险评分 | 版本 mismatch 警告 |
+
 ## 12. 启用用户选择的 Copr
 
 用户选择 Copr 后，例如：
@@ -452,26 +575,32 @@ copa install --rpmfusion-only <package>
 copa install --terra-only <package>
 copa install --copr-only <package>
 copa install --copr <owner/project> <package>
+copa install --obs-only <package>
 copa install --keep-copr <package>
 copa install --remove-copr-after-install <package>
 copa install --disable-copr-after-install <package>
 copa install --no-terra <package>
+copa install --no-obs <package>
+copa install --allow-obs-fallback <package>
 ```
 
 选项含义：
 
 | 选项 | 行为 |
 |---|---|
-| 无参数 | 按 Fedora → RPM Fusion → Terra → Copr 顺序搜索 |
+| 无参数 | 按 Fedora → RPM Fusion → Terra → Copr → OBS 顺序搜索 |
 | `--official-only` | 只搜索 Fedora 官方源 |
 | `--rpmfusion-only` | 只搜索 RPM Fusion |
 | `--terra-only` | 只搜索 Terra，前提是 Terra 已启用 |
 | `--copr-only` | 只搜索 Copr |
 | `--copr owner/project` | 不搜索 Copr，直接使用指定 Copr |
+| `--obs-only` | 只搜索 OBS |
 | `--keep-copr` | 安装后保留 Copr |
 | `--remove-copr-after-install` | 安装后删除 Copr repo |
 | `--disable-copr-after-install` | 安装后禁用 Copr，但保留 repo 文件，默认行为 |
 | `--no-terra` | 即使 Terra 已启用，也跳过 Terra |
+| `--no-obs` | 跳过 OBS 搜索 |
+| `--allow-obs-fallback` | 允许 OBS 版本 fallback（默认需要确认） |
 
 ## 17. 全局选项建议
 
@@ -575,6 +704,9 @@ Done.
 8. Fedora 官方仓库优先级最高。
 9. RPM Fusion 仅在已启用时参与搜索，不主动添加。
 10. Copr 属于第三方社区仓库，必须提示用户风险。
+11. OBS 仓库需要用户手动添加，不自动启用。
+12. OBS 包版本与当前 Fedora 版本不匹配时，必须明确提示风险。
+13. OBS 版本 fallback 最多支持 2 个版本差距。
 
 ## 20. 最终确定版流程摘要
 
@@ -592,6 +724,11 @@ Done.
 9. Run dnf5 install <package>.
 10. Ask whether to keep the Copr repository.
 11. By default, disable the Copr repository after installation; if the user explicitly chooses removal, remove the Copr repo file or run dnf5 copr remove.
+12. If no Copr results or user chooses to continue, search OBS repositories.
+13. Show matching OBS packages with version compatibility info.
+14. If OBS package version doesn't match current Fedora, warn user about fallback risk.
+15. Provide OBS repo download URL for manual addition.
+16. Copy install commands to clipboard if requested.
 ```
 
 ## 21. 仍需改进的问题

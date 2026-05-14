@@ -6,6 +6,7 @@ from typing import Optional
 
 from copa.copr_backend import CoprBackend, CoprProject
 from copa.dnf_backend import DnfBackend, Package
+from copa.obs_backend import OBSBackend, OBSPackage, OBSRepo
 
 
 class Source(Enum):
@@ -14,6 +15,7 @@ class Source(Enum):
     RPMFUSION = "rpmfusion"
     TERRA = "terra"
     COPR = "copr"
+    OBS = "obs"
 
 
 @dataclass
@@ -33,12 +35,28 @@ class CoprSearchResult:
     has_package: bool
 
 
+@dataclass
+class OBSSearchResult:
+    """OBS 搜索结果"""
+    package: OBSPackage
+    repos: list[OBSRepo]
+    has_current_version: bool
+    best_repo: Optional[OBSRepo]
+    risk_level: str  # low, medium, high
+
+
 class SearchEngine:
     """搜索引擎"""
 
-    def __init__(self, dnf: DnfBackend, copr: CoprBackend):
+    def __init__(
+        self,
+        dnf: DnfBackend,
+        copr: CoprBackend,
+        obs: Optional[OBSBackend] = None,
+    ):
         self.dnf = dnf
         self.copr = copr
+        self.obs = obs or OBSBackend()
 
     def search_fedora(self, keyword: str) -> list[SearchResult]:
         """搜索 Fedora 官方源"""
@@ -62,7 +80,7 @@ class SearchEngine:
 
         for project in projects:
             supports_chroot = chroot in project.chroots
-            risk_level = self._assess_risk(project, supports_chroot)
+            risk_level = self._assess_copr_risk(project, supports_chroot)
 
             results.append(CoprSearchResult(
                 project=project,
@@ -73,8 +91,8 @@ class SearchEngine:
 
         return results
 
-    def _assess_risk(self, project: CoprProject, supports_chroot: bool) -> str:
-        """评估风险等级"""
+    def _assess_copr_risk(self, project: CoprProject, supports_chroot: bool) -> str:
+        """评估 Copr 风险等级"""
         desc_lower = project.description.lower()
         instructions_lower = project.instructions.lower()
 
@@ -96,18 +114,78 @@ class SearchEngine:
 
         return "low"
 
+    def search_obs(
+        self,
+        keyword: str,
+        current_fedora_version: int,
+        max_fallback: int = 2,
+    ) -> list[OBSSearchResult]:
+        """搜索 OBS 仓库"""
+        packages = self.obs.search_packages(keyword)
+        results = []
+
+        for package in packages:
+            repos = self.obs.find_fedora_repos(
+                package.project,
+                current_fedora_version,
+                max_fallback,
+            )
+
+            if not repos:
+                continue
+
+            has_current_version = any(r.is_current_version for r in repos)
+            best_repo = repos[0] if repos else None
+            risk_level = self._assess_obs_risk(has_current_version, best_repo)
+
+            results.append(OBSSearchResult(
+                package=package,
+                repos=repos,
+                has_current_version=has_current_version,
+                best_repo=best_repo,
+                risk_level=risk_level,
+            ))
+
+        return results
+
+    def _assess_obs_risk(
+        self,
+        has_current_version: bool,
+        best_repo: Optional[OBSRepo],
+    ) -> str:
+        """评估 OBS 风险等级"""
+        if has_current_version:
+            return "low"
+
+        if best_repo and best_repo.version_gap == 1:
+            return "medium"
+
+        if best_repo and best_repo.version_gap == 2:
+            return "high"
+
+        return "high"
+
     def search_all(
         self,
         keyword: str,
+        current_fedora_version: int,
         official_only: bool = False,
         rpmfusion_only: bool = False,
         copr_only: bool = False,
-    ) -> tuple[list[SearchResult], list[CoprSearchResult]]:
+        obs_only: bool = False,
+        no_obs: bool = False,
+        max_obs_fallback: int = 2,
+    ) -> tuple[list[SearchResult], list[CoprSearchResult], list[OBSSearchResult]]:
         """搜索所有来源"""
         fedora_results = []
         rpmfusion_results = []
         terra_results = []
         copr_results = []
+        obs_results = []
+
+        if obs_only:
+            obs_results = self.search_obs(keyword, current_fedora_version, max_obs_fallback)
+            return [], [], obs_results
 
         if not copr_only:
             fedora_results = self.search_fedora(keyword)
@@ -119,5 +197,8 @@ class SearchEngine:
             chroot = self.dnf.get_chroot()
             copr_results = self.search_copr(keyword, chroot)
 
+        if not no_obs and not official_only and not rpmfusion_only and not copr_only:
+            obs_results = self.search_obs(keyword, current_fedora_version, max_obs_fallback)
+
         all_results = fedora_results + rpmfusion_results + terra_results
-        return all_results, copr_results
+        return all_results, copr_results, obs_results

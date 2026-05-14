@@ -29,6 +29,7 @@ classifiers = [
 
 dependencies = [
     "python-copr>=1.125",
+    "httpx>=0.27",
 ]
 
 [project.optional-dependencies]

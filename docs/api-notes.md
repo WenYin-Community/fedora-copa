@@ -159,6 +159,117 @@ builds = client.build_proxy.get_list("owner", "project", packagename="pkg")
 | Copr 项目查询 | `python-copr` 客户端 |
 | Copr enable/disable | `subprocess` + `sudo dnf5 copr` |
 | makecache | `subprocess` + `sudo dnf5` |
+| OBS 搜索 | OBS REST API (`httpx`) |
+| OBS repo 添加 | 用户手动执行命令 |
+
+---
+
+## openSUSE Build Service (OBS) API
+
+### Base URL
+
+```
+https://api.opensuse.org
+```
+
+### 认证
+
+- 只读操作**不需要认证**
+- 写操作需要 HTTP Basic Auth
+
+### API 文档
+
+- OpenAPI 规范: https://api.opensuse.org/apidocs/
+- 格式: XML，需要设置 `Accept: application/xml; charset=utf-8`
+
+### 主要端点
+
+| 功能 | 端点 | 方法 |
+|------|------|------|
+| 搜索项目 | `/search/project?match=<xpath>` | GET |
+| 搜索包 | `/search/package?match=<xpath>` | GET |
+| 搜索二进制 | `/search/released/binary?match=<xpath>` | GET |
+| 项目元数据 | `/source/<project>/_meta` | GET |
+| 包元数据 | `/source/<project>/<package>/_meta` | GET |
+
+### XPath 查询语法
+
+```bash
+# 按名称搜索项目
+match=contains(@name,'ghostty')
+
+# 按名称搜索包
+match=@name='ghostty'
+
+# 组合查询
+match=name='ghostty'+and+repository='Fedora_43'
+
+# 支持的函数
+boolean, contains, not, starts_with, ends_with
+```
+
+### Python 调用示例
+
+```python
+import httpx
+import xml.etree.ElementTree as ET
+
+client = httpx.Client(
+    headers={"Accept": "application/xml; charset=utf-8"},
+    timeout=30.0,
+)
+
+# 搜索包
+response = client.get(
+    "https://api.opensuse.org/search/package",
+    params={"match": "@name='ghostty'"}
+)
+root = ET.fromstring(response.text)
+
+for pkg in root.findall(".//package"):
+    print(f"Name: {pkg.get('name')}")
+    print(f"Project: {pkg.get('project')}")
+```
+
+### 获取 Fedora 仓库
+
+```python
+# 获取项目仓库列表
+response = client.get(f"https://api.opensuse.org/source/{project}/_meta")
+root = ET.fromstring(response.text)
+
+for repo in root.findall(".//repository"):
+    repo_name = repo.get("name")
+    # 从仓库名提取 Fedora 版本
+    # 格式: Fedora_43, Fedora_43_x86_64, fedora-43-x86_64
+```
+
+### Repo 文件 URL
+
+```
+https://download.opensuse.org/repositories/<project>/<repository>/<project>.repo
+```
+
+### CLI 工具 osc
+
+```bash
+# Fedora 安装
+sudo dnf config-manager --add-repo https://download.opensuse.org/repositories/openSUSE:/Tools/Fedora_43/openSUSE:Tools.repo
+sudo dnf install osc
+
+# 常用命令
+osc ls                              # 列出项目
+osc ls <project>                    # 列出项目中的包
+osc results                         # 查看构建结果
+osc repourls                        # 获取 repo URL
+```
+
+### 版本 Fallback 策略
+
+1. 查询当前 Fedora 版本（如 `fedora-43`）的包
+2. 如果没有，查询上一个版本（如 `fedora-42`）的包
+3. 最多 fallback 2 个版本
+4. 必须向用户提示版本 mismatch 风险
 
 ---
 
@@ -168,3 +279,6 @@ builds = client.build_proxy.get_list("owner", "project", packagename="pkg")
 - Copr API Swagger: https://copr.fedorainfracloud.org/api_3/docs/
 - python-copr 文档: https://python-copr.readthedocs.io/en/latest/
 - Copr GitHub: https://github.com/fedora-copr/copr
+- OBS API 文档: https://api.opensuse.org/apidocs/
+- osc 文档: https://www.open-build-service.org/help/manuals/obs-user-guide/cha-obs-osc
+- osc GitHub: https://github.com/openSUSE/osc
