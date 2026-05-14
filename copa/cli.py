@@ -1,11 +1,12 @@
-"""命令行入口"""
+"""Command line entry point"""
 
 import argparse
 import sys
+from typing import Any
 
 from copa import __app_name__, __version__
 
-# ANSI 颜色码
+# ANSI color codes
 RED = "\033[91m"
 YELLOW = "\033[93m"
 GREEN = "\033[92m"
@@ -236,7 +237,7 @@ def cmd_search(args: argparse.Namespace) -> int:
     enabled_repos = dnf.get_enabled_repos()
 
     # Collect all results
-    all_results = {
+    all_results: dict[str, Any] = {
         "query": search_query,
         "regex": use_regex,
         "fedora": [],
@@ -367,9 +368,11 @@ def cmd_search(args: argparse.Namespace) -> int:
     return 0
 
 
-def _filter_by_keywords(packages, keywords: list[str], match_desc: bool = True):
+def _filter_by_keywords(
+    packages: list[Any], keywords: list[str], match_desc: bool = True
+) -> list[Any]:
     """Filter packages by keywords - AND logic"""
-    def matches(pkg):
+    def matches(pkg: Any) -> bool:
         name_lower = pkg.name.lower()
         desc_lower = pkg.summary.lower() if hasattr(pkg, 'summary') else ""
         for kw in keywords:
@@ -381,9 +384,11 @@ def _filter_by_keywords(packages, keywords: list[str], match_desc: bool = True):
     return [p for p in packages if matches(p)]
 
 
-def _filter_by_regex(packages, patterns: list):
+def _filter_by_regex(
+    packages: list[Any], patterns: list[Any]
+) -> list[Any]:
     """Filter packages by regex - match names only, AND logic"""
-    def matches(pkg):
+    def matches(pkg: Any) -> bool:
         name = pkg.name
         for pattern in patterns:
             if not pattern.search(name):
@@ -392,9 +397,11 @@ def _filter_by_regex(packages, patterns: list):
     return [p for p in packages if matches(p)]
 
 
-def _filter_copr_by_keywords(results, keywords: list[str]):
+def _filter_copr_by_keywords(
+    results: list[Any], keywords: list[str]
+) -> list[Any]:
     """Filter Copr results by keywords - AND logic"""
-    def matches(result):
+    def matches(result: Any) -> bool:
         name_lower = result.project.name.lower()
         owner_lower = result.project.owner.lower()
         desc_lower = result.project.description.lower()
@@ -408,9 +415,11 @@ def _filter_copr_by_keywords(results, keywords: list[str]):
     return [r for r in results if matches(r)]
 
 
-def _filter_copr_by_regex(results, patterns: list):
+def _filter_copr_by_regex(
+    results: list[Any], patterns: list[Any]
+) -> list[Any]:
     """Filter Copr results by regex - match project names only, AND logic"""
-    def matches(result):
+    def matches(result: Any) -> bool:
         name = result.project.name
         for pattern in patterns:
             if not pattern.search(name):
@@ -549,7 +558,7 @@ def cmd_install(args: argparse.Namespace) -> int:
     # Steps 4-16: Search Copr and OBS (merged results)
     if not args.official_only and not args.rpmfusion_only:
         chroot = dnf.get_chroot()
-        all_sources = []  # 合并所有来源 [(source, data), ...]
+        all_sources: list[tuple[str, Any]] = []
 
         # Search Copr
         if not args.obs_only:
@@ -561,7 +570,7 @@ def cmd_install(args: argparse.Namespace) -> int:
         # Search OBS
         if not args.no_obs and not args.copr_only:
             print("Searching OBS repos...")
-            obs_results = engine.search_obs(package, fedora_version)
+            obs_results: list[Any] = engine.search_obs(package, fedora_version)
             for r in obs_results[:10]:
                 all_sources.append(("obs", r))
 
@@ -630,7 +639,15 @@ def cmd_install(args: argparse.Namespace) -> int:
     return 1
 
 
-def _install_from_copr(args, dnf, state, engine, package, selected, chroot) -> int:
+def _install_from_copr(
+    args: argparse.Namespace,
+    dnf: Any,
+    state: Any,
+    engine: Any,
+    package: str,
+    selected: Any,
+    chroot: str,
+) -> int:
     """Install from Copr"""
     owner_project = f"{selected.project.owner}/{selected.project.name}"
     print(f"\nEnabling Copr: {owner_project}")
@@ -682,7 +699,15 @@ def _install_from_copr(args, dnf, state, engine, package, selected, chroot) -> i
     return 0
 
 
-def _install_from_obs(args, dnf, obs, state, package, selected, fedora_version) -> int:
+def _install_from_obs(
+    args: argparse.Namespace,
+    dnf: Any,
+    obs: Any,
+    state: Any,
+    package: str,
+    selected: Any,
+    fedora_version: int,
+) -> int:
     """Install from OBS"""
     # Version fallback warning
     if not selected.has_current_version and selected.best_repo:
@@ -774,7 +799,7 @@ def cmd_info(args: argparse.Namespace) -> int:
     dnf = DnfBackend()
     copr = CoprBackend()
 
-    result_data = {
+    result_data: dict[str, Any] = {
         "package": package,
         "type": "unknown",
         "repos": [],
@@ -876,7 +901,7 @@ def cmd_list(args: argparse.Namespace) -> int:
     state = AppState.load()
     use_json = args.json if hasattr(args, 'json') else False
 
-    result_data = {
+    result_data: dict[str, Any] = {
         "packages": [],
         "copr_repos": [],
         "obs_repos": [],
@@ -922,19 +947,19 @@ def cmd_list(args: argparse.Namespace) -> int:
                 if repo.installed_packages:
                     print(f"    Packages: {', '.join(repo.installed_packages)}")
 
-        for repo in state.obs_repos:
-            status = "enabled" if repo.enabled_by_copa else "system"
+        for obs_repo in state.obs_repos:
+            status = "enabled" if obs_repo.enabled_by_copa else "system"
             result_data["obs_repos"].append({
-                "project": repo.project,
+                "project": obs_repo.project,
                 "status": status,
-                "fedora_version": repo.fedora_version,
-                "installed_packages": repo.installed_packages,
+                "fedora_version": obs_repo.fedora_version,
+                "installed_packages": obs_repo.installed_packages,
             })
             if not use_json:
                 print("\nOBS repos:")
-                print(f"  - {repo.project} [{status}]")
-                if repo.installed_packages:
-                    print(f"    Packages: {', '.join(repo.installed_packages)}")
+                print(f"  - {obs_repo.project} [{status}]")
+                if obs_repo.installed_packages:
+                    print(f"    Packages: {', '.join(obs_repo.installed_packages)}")
 
         if not state.copr_repos and not state.obs_repos and not use_json:
             print("  No third-party repos managed by copa")
@@ -1000,14 +1025,14 @@ def cmd_repo(args: argparse.Namespace) -> int:
                 print(f"  {repo_id} [system]")
 
             # OBS repos managed by copa
-            for repo in state.obs_repos:
-                if f"obs:{repo.project}" not in obs_repos:
-                    status = "enabled" if repo.enabled_by_copa else "system"
-                    print(f"  {repo.project} [{status}]")
-                    if repo.fedora_version:
-                        print(f"    Fedora: {repo.fedora_version}")
-                    if repo.installed_packages:
-                        print(f"    Packages: {', '.join(repo.installed_packages)}")
+            for obs_repo in state.obs_repos:
+                if f"obs:{obs_repo.project}" not in obs_repos:
+                    status = "enabled" if obs_repo.enabled_by_copa else "system"
+                    print(f"  {obs_repo.project} [{status}]")
+                    if obs_repo.fedora_version:
+                        print(f"    Fedora: {obs_repo.fedora_version}")
+                    if obs_repo.installed_packages:
+                        print(f"    Packages: {', '.join(obs_repo.installed_packages)}")
 
         if not copr_repos and not obs_repos and not state.copr_repos and not state.obs_repos:
             print("  No third-party repos found")
@@ -1176,10 +1201,14 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         pass
     checks.append(("Network", network_ok, "copr.fedorainfracloud.org"))
 
-    # Check if it is a rpm-ostree 系统
+    # Check if it is a rpm-ostree system
     is_ostree = False
     try:
-        result = subprocess.run(["rpm-ostree", "status"], capture_output=True)
+        result = subprocess.run(
+            ["rpm-ostree", "status"],
+            capture_output=True,
+            text=True
+        )
         is_ostree = result.returncode == 0
     except Exception:
         pass
@@ -1299,23 +1328,23 @@ def cmd_audit(args: argparse.Namespace) -> int:
 
         print()
 
-    # 审计 OBS 仓库
+    # Audit OBS repos
     if state.obs_repos:
         print("OBS repos:")
-        for repo in state.obs_repos:
-            print(f"  Checking {repo.project}...")
+        for obs_repo in state.obs_repos:
+            print(f"  Checking {obs_repo.project}...")
 
             # Check version match
-            if (repo.fedora_version
-                    and repo.fedora_version != str(fedora_version)):
+            if (obs_repo.fedora_version
+                    and obs_repo.fedora_version != str(fedora_version)):
                 issues.append(
-                    f"OBS {repo.project}: "
-                    f"Built for Fedora {repo.fedora_version}, "
+                    f"OBS {obs_repo.project}: "
+                    f"Built for Fedora {obs_repo.fedora_version}, "
                     f"current is {fedora_version}"
                 )
                 print(
                     f"    WARNING: Version mismatch "
-                    f"(Fedora {repo.fedora_version} "
+                    f"(Fedora {obs_repo.fedora_version} "
                     f"vs {fedora_version})"
                 )
 

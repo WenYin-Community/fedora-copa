@@ -41,9 +41,9 @@ def run_command(
     sudo: bool = False,
     check: bool = True,
     capture: bool = True,
-) -> subprocess.CompletedProcess:
-    """执行命令"""
-    cmd = []
+) -> subprocess.CompletedProcess[str]:
+    """Execute command"""
+    cmd: list[str] = []
     if sudo:
         cmd.append("sudo")
     cmd.extend(args)
@@ -56,8 +56,8 @@ def run_command(
 
     if check and result.returncode != 0:
         raise RuntimeError(
-            f"命令执行失败: {' '.join(cmd)}\n"
-            f"返回码: {result.returncode}\n"
+            f"Command failed: {' '.join(cmd)}\n"
+            f"Return code: {result.returncode}\n"
             f"stderr: {result.stderr}"
         )
 
@@ -103,12 +103,13 @@ def select_from_list(
 
 
 def format_size(size_bytes: int) -> str:
-    """格式化文件大小"""
+    """Format file size"""
+    size: float = size_bytes
     for unit in ["B", "KB", "MB", "GB"]:
-        if size_bytes < 1024:
-            return f"{size_bytes:.1f} {unit}"
-        size_bytes /= 1024
-    return f"{size_bytes:.1f} TB"
+        if size < 1024:
+            return f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} TB"
 
 
 def print_error(message: str) -> None:

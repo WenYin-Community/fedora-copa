@@ -111,18 +111,32 @@ class CoprBackend:
     ) -> list[CoprBuild]:
         """Get build list"""
         try:
-            kwargs = {"limit": limit}
+            kwargs: dict[str, str | int] = {"limit": limit}
             if package:
                 kwargs["packagename"] = package
-            builds = self.client.build_proxy.get_list(owner, project, **kwargs)
-            result = []
+            builds = self.client.build_proxy.get_list(
+                owner, project, **kwargs
+            )
+            result: list[CoprBuild] = []
             for build in builds:
                 result.append(CoprBuild(
                     id=build.id,
                     state=build.state,
-                    chroot=build.chroot if hasattr(build, 'chroot') else "",
-                    started_on=build.started_on if hasattr(build, 'started_on') else None,
-                    ended_on=build.ended_on if hasattr(build, 'ended_on') else None,
+                    chroot=(
+                        build.chroot
+                        if hasattr(build, 'chroot')
+                        else ""
+                    ),
+                    started_on=(
+                        build.started_on
+                        if hasattr(build, 'started_on')
+                        else None
+                    ),
+                    ended_on=(
+                        build.ended_on
+                        if hasattr(build, 'ended_on')
+                        else None
+                    ),
                 ))
             return result
         except Exception:

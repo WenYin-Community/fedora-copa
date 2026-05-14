@@ -1,4 +1,4 @@
-"""DNF5 后端 - 处理与 DNF5 的交互"""
+"""DNF5 backend - handles interaction with DNF5"""
 
 import re
 import subprocess
@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 @dataclass
 class Package:
-    """软件包信息"""
+    """Package information"""
     name: str
     version: str
     release: str
@@ -19,29 +19,33 @@ class Package:
 
 @dataclass
 class Repo:
-    """仓库信息"""
+    """Repository information"""
     id: str
     name: str
     enabled: bool
 
 
 class DnfBackend:
-    """DNF5 后端封装"""
+    """DNF5 backend wrapper"""
 
     def __init__(self, use_dnf5: bool = True):
         self.use_dnf5 = use_dnf5
         self._binary = "dnf5" if use_dnf5 else "dnf"
 
-    def _run(self, args: list[str], sudo: bool = False) -> subprocess.CompletedProcess:
+    def _run(
+        self, args: list[str], sudo: bool = False
+    ) -> subprocess.CompletedProcess[str]:
         """Execute dnf command"""
-        cmd = []
+        cmd: list[str] = []
         if sudo:
             cmd.append("sudo")
         cmd.append(self._binary)
         cmd.extend(args)
         return subprocess.run(cmd, capture_output=True, text=True)
 
-    def search(self, keyword: str, repo: str | None = None) -> list[Package]:
+    def search(
+        self, keyword: str, repo: str | None = None
+    ) -> list[Package]:
         """Search packages"""
         args = ["repoquery", "--queryinfo", keyword]
         if repo:
@@ -55,8 +59,8 @@ class DnfBackend:
 
     def _parse_repoquery(self, output: str) -> list[Package]:
         """Parse repoquery output"""
-        packages = []
-        current = {}
+        packages: list[Package] = []
+        current: dict[str, str] = {}
 
         for line in output.split("\n"):
             line = line.strip()
@@ -135,7 +139,7 @@ class DnfBackend:
     def get_enabled_repos(self) -> dict[str, list[str]]:
         """Get enabled repos, categorized by type"""
         repos = self.repolist(enabled_only=True)
-        categorized = {
+        categorized: dict[str, list[str]] = {
             "fedora": [],
             "rpmfusion": [],
             "terra": [],

@@ -64,8 +64,10 @@ class OBSBackend:
             timeout=30.0,
         )
 
-    def _get(self, path: str, params: dict | None = None) -> ET.Element:
-        """发送 GET 请求"""
+    def _get(
+        self, path: str, params: dict[str, str] | None = None
+    ) -> ET.Element:
+        """Send GET request"""
         url = f"{self.api_base}{path}"
         response = self.client.get(url, params=params)
         response.raise_for_status()
