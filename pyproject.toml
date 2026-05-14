@@ -7,7 +7,7 @@ name = "copa"
 version = "0.1.0"
 description = "DNF5 风格的 Fedora Copr 软件包助手"
 readme = "README.md"
-license = {text = "GPL-3.0-or-later"}
+license = {text = "GPL-2.0-or-later"}
 requires-python = ">=3.11"
 authors = [
     {name = "copa contributors"}
@@ -17,7 +17,7 @@ classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
     "Intended Audience :: System Administrators",
-    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "License :: OSI Approved :: GNU General Public License v2 or later (GPLv2+)",
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
