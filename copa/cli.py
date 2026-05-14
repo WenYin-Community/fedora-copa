@@ -6,6 +6,13 @@ from typing import Optional
 
 from copa import __app_name__, __version__
 
+# ANSI 颜色码
+RED = "\033[91m"
+YELLOW = "\033[93m"
+GREEN = "\033[92m"
+BOLD = "\033[1m"
+RESET = "\033[0m"
+
 
 def create_parser() -> argparse.ArgumentParser:
     """创建命令行参数解析器"""
@@ -96,9 +103,9 @@ def cmd_search(args: argparse.Namespace) -> int:
 
     # 第三方源风险提示
     if not args.official_only:
-        print("WARNING: Packages from sources other than Fedora official repos")
-        print("  (RPM Fusion, Terra, Copr, OBS) are built by third parties.")
-        print("  Please verify the risks before installation.\n")
+        print(f"{RED}WARNING: Packages from sources other than Fedora official repos")
+        print(f"  (RPM Fusion, Terra, Copr, OBS) are built by third parties.")
+        print(f"  Please verify the risks before installation.{RESET}\n")
 
     # 搜索 Fedora 官方源
     if not args.copr_only:
@@ -174,9 +181,9 @@ def cmd_install(args: argparse.Namespace) -> int:
 
     # 第三方源风险提示
     if not args.official_only:
-        print("WARNING: Packages from sources other than Fedora official repos")
-        print("  (RPM Fusion, Terra, Copr, OBS) are built by third parties.")
-        print("  Please verify the risks before installation.\n")
+        print(f"{RED}WARNING: Packages from sources other than Fedora official repos")
+        print(f"  (RPM Fusion, Terra, Copr, OBS) are built by third parties.")
+        print(f"  Please verify the risks before installation.{RESET}\n")
 
     # Dry-run 模式
     if args.dry_run:
@@ -198,7 +205,7 @@ def cmd_install(args: argparse.Namespace) -> int:
                     print(f"  {pkg.name}-{pkg.evr} ({pkg.repo})")
 
                 if not args.assumeyes:
-                    response = input("\nPress Enter to install from Fedora, or 's' to continue searching [Install/search]: ").strip().lower()
+                    response = input(f"{BOLD}\nPress Enter to install from Fedora, or 's' to continue searching [Install/search]: {RESET}").strip().lower()
                     if response != "s":
                         print(f"\nExecuting: sudo dnf5 install {package}")
                         if dnf.install(package):
@@ -224,7 +231,7 @@ def cmd_install(args: argparse.Namespace) -> int:
                     print(f"  {pkg.name}-{pkg.evr} ({pkg.repo})")
 
                 if not args.assumeyes:
-                    response = input("\nPress Enter to install from RPM Fusion, or 's' to continue searching [Install/search]: ").strip().lower()
+                    response = input(f"{BOLD}\nPress Enter to install from RPM Fusion, or 's' to continue searching [Install/search]: {RESET}").strip().lower()
                     if response != "s":
                         print(f"\nExecuting: sudo dnf5 install {package}")
                         if dnf.install(package):
@@ -250,7 +257,7 @@ def cmd_install(args: argparse.Namespace) -> int:
                     print(f"  {pkg.name}-{pkg.evr} ({pkg.repo})")
 
                 if not args.assumeyes:
-                    response = input("\nPress Enter to install from Terra, or 's' to continue searching [Install/search]: ").strip().lower()
+                    response = input(f"{BOLD}\nPress Enter to install from Terra, or 's' to continue searching [Install/search]: {RESET}").strip().lower()
                     if response != "s":
                         print(f"\nExecuting: sudo dnf5 install {package}")
                         if dnf.install(package):
@@ -298,7 +305,7 @@ def cmd_install(args: argparse.Namespace) -> int:
                     return 1
             else:
                 # 交互选择
-                choice = input("\nSelect Copr project [1-N, q to cancel]: ").strip().lower()
+                choice = input(f"{BOLD}\nSelect Copr project [1-N, q to cancel]: {RESET}").strip().lower()
                 if choice in ("q", "quit"):
                     return 0
                 try:
@@ -341,22 +348,11 @@ def cmd_install(args: argparse.Namespace) -> int:
 
                     # 询问是否保留
                     if not args.keep_copr:
-                        print(f"\nKeep Copr repo {owner_project}?")
+                        print(f"{BOLD}\nKeep Copr repo {owner_project}?{RESET}")
                         print("  [1] Keep enabled")
                         print("  [2] Disable repo [default]")
                         print("  [3] Remove repo file")
-                        choice = input("Select [1/2/3]: ").strip()
-
-                        if choice == "1":
-                            print("Keeping enabled")
-                        elif choice == "3":
-                            print("Removing repo file...")
-                            dnf.copr_remove(owner_project)
-                            state.remove_copr_repo(selected.project.owner, selected.project.name)
-                            state.save()
-                        else:
-                            print("Disabling repo...")
-                            dnf.copr_disable(owner_project)
+                        choice = input(f"{BOLD}Select [1/2/3]: {RESET}").strip()
                 else:
                     print("Installation failed")
                     # 回滚: 禁用新启用的 Copr
@@ -385,7 +381,7 @@ def cmd_install(args: argparse.Namespace) -> int:
                 print(f"      Version: {version_status} | Risk: {result.risk_level}")
 
             # 用户选择
-            choice = input("\nSelect OBS project [1-N, q to cancel]: ").strip().lower()
+            choice = input(f"{BOLD}\nSelect OBS project [1-N, q to cancel]: {RESET}").strip().lower()
             if choice in ("q", "quit"):
                 return 0
 
@@ -402,15 +398,15 @@ def cmd_install(args: argparse.Namespace) -> int:
 
             # 版本 fallback 警告
             if not selected.has_current_version and selected.best_repo:
-                print(f"\nWARNING: Version mismatch!")
+                print(f"\n{RED}WARNING: Version mismatch!{RESET}")
                 print(f"Package: {package}")
                 print(f"Available for: Fedora {selected.best_repo.fedora_version}")
                 print(f"Your system: Fedora {fedora_version}")
-                print("\nThis package was built for an older Fedora version.")
-                print("It may have dependency issues or not work correctly.")
+                print(f"{RED}This package was built for an older Fedora version.")
+                print(f"It may have dependency issues or not work correctly.{RESET}")
 
                 if not args.allow_obs_fallback:
-                    if not confirm("Continue anyway?", default=False):
+                    if not confirm(f"{BOLD}Continue anyway?{RESET}", default=False):
                         return 0
 
             # 下载 repo 文件
@@ -434,7 +430,7 @@ def cmd_install(args: argparse.Namespace) -> int:
                         print(f"  sudo dnf5 makecache --refresh")
                         print(f"  sudo dnf5 install {package}")
 
-                        if args.assumeyes or confirm("\nPress Enter to install", default=True):
+                        if args.assumeyes or confirm(f"{BOLD}\nPress Enter to install{RESET}", default=True):
                             print("Refreshing cache...")
                             dnf.makecache()
 
@@ -443,11 +439,11 @@ def cmd_install(args: argparse.Namespace) -> int:
                                 print("Installation successful!")
 
                                 # 询问是否保留
-                                print(f"\nKeep OBS repo {selected.package.project}?")
+                                print(f"{BOLD}\nKeep OBS repo {selected.package.project}?{RESET}")
                                 print("  [1] Keep enabled")
                                 print("  [2] Disable repo [default]")
                                 print("  [3] Remove repo file")
-                                choice = input("Select [1/2/3]: ").strip()
+                                choice = input(f"{BOLD}Select [1/2/3]: {RESET}").strip()
 
                                 if choice == "1":
                                     print("Keeping enabled")
