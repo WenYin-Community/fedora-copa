@@ -35,7 +35,7 @@ Supported package sources:
 - openSUSE OBS (cross-distro build service)
 
 %prep
-%autosetup -n fedora-copa-%{version}
+%autosetup -n %{name}-%{version}
 
 %build
 %{__python3} -m pip wheel --no-deps --wheel-dir=%{_builddir} .

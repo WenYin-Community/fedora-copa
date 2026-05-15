@@ -31,8 +31,12 @@ srpm: build-srpm
 build-srpm:
 	@echo "Building source RPM..."
 	@mkdir -p build/SRPMS
-	@curl -sSfL -o "$(PACKAGE)-$(VERSION).tar.gz" \
-		"$(URL)/archive/v$(VERSION)/$(PACKAGE)-$(VERSION).tar.gz" || true
+	@curl -sSfL -o /tmp/fedora-copa-$(VERSION)-raw.tar.gz \
+		"$(URL)/archive/v$(VERSION)/$(PACKAGE)-$(VERSION).tar.gz"
+	@cd /tmp && tar xzf fedora-copa-$(VERSION)-raw.tar.gz && \
+		mv fedora-copa-$(VERSION) $(PACKAGE)-$(VERSION) && \
+		tar czf $(CURDIR)/$(PACKAGE)-$(VERSION).tar.gz $(PACKAGE)-$(VERSION) && \
+		rm -rf $(PACKAGE)-$(VERSION) fedora-copa-$(VERSION)-raw.tar.gz
 	@rpmbuild -bs $(SPEC_FILE) \
 		--define "_topdir $(CURDIR)/build" \
 		--define "_sourcedir $(CURDIR)"
