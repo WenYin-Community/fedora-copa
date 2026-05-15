@@ -165,10 +165,19 @@ jobs:
           name: copa-srpm
           path: srpm/
 
+      - name: Create source archive
+        run: |
+          VERSION=$(grep '__version__' copa/__init__.py | sed 's/.*"\(.*\)"/\1/')
+          cd /tmp
+          cp -r $GITHUB_WORKSPACE fedora-copa-${VERSION}
+          tar czf $GITHUB_WORKSPACE/fedora-copa-${VERSION}.tar.gz fedora-copa-${VERSION}
+          rm -rf fedora-copa-${VERSION}
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
+            fedora-copa-*.tar.gz
             rpms/**/*.rpm
             srpm/*.src.rpm
           generate_release_notes: true
