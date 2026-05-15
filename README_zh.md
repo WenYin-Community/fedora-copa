@@ -43,11 +43,18 @@ cd fedora-copa
 pip install --user .
 ```
 
+### 从 Copr 安装
+
+```bash
+sudo dnf copr enable ruojiner/fedora-copa
+sudo dnf install fedora-copa
+```
+
 ### 从 RPM 安装
 
 ```bash
 # 从 GitHub Releases 下载
-dnf install copa-*.noarch.rpm
+dnf install fedora-copa-*.noarch.rpm
 ```
 
 ### 依赖
