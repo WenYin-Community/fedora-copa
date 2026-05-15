@@ -1,6 +1,6 @@
 .PHONY: build clean test lint
 
-PACKAGE = copa
+PACKAGE = fedora-copa
 VERSION = $(shell grep '^Version:' rpm/copa.spec | awk '{print $$2}')
 URL = https://github.com/WenYin-Community/fedora-copa
 SPEC_FILE = rpm/copa.spec
@@ -31,12 +31,8 @@ srpm: build-srpm
 build-srpm:
 	@echo "Building source RPM..."
 	@mkdir -p build/SRPMS
-	@curl -sSfL -o /tmp/fedora-copa-$(VERSION)-raw.tar.gz \
-		"$(URL)/archive/v$(VERSION)/$(PACKAGE)-$(VERSION).tar.gz"
-	@cd /tmp && tar xzf fedora-copa-$(VERSION)-raw.tar.gz && \
-		mv fedora-copa-$(VERSION) $(PACKAGE)-$(VERSION) && \
-		tar czf $(CURDIR)/$(PACKAGE)-$(VERSION).tar.gz $(PACKAGE)-$(VERSION) && \
-		rm -rf $(PACKAGE)-$(VERSION) fedora-copa-$(VERSION)-raw.tar.gz
+	@curl -sSfL -o "fedora-copa-$(VERSION).tar.gz" \
+		"$(URL)/releases/download/v$(VERSION)/fedora-copa-$(VERSION).tar.gz"
 	@rpmbuild -bs $(SPEC_FILE) \
 		--define "_topdir $(CURDIR)/build" \
 		--define "_sourcedir $(CURDIR)"

@@ -1,11 +1,11 @@
-Name:           copa
+Name:           fedora-copa
 Version:        0.5.0
 Release:        1%{?dist}
 Summary:        DNF5-style Fedora Copr Package Assistant
 
 License:        GPL-2.0-or-later
 URL:            https://github.com/WenYin-Community/fedora-copa
-Source0:        %{url}/archive/v%{version}/%{name}-%{version}.tar.gz
+Source0:        %{url}/releases/download/v%{version}/fedora-copa-%{version}.tar.gz
 
 BuildArch:      noarch
 
@@ -35,13 +35,13 @@ Supported package sources:
 - openSUSE OBS (cross-distro build service)
 
 %prep
-%autosetup -n %{name}-%{version}
+%autosetup -n fedora-copa-%{version}
 
 %build
 %{__python3} -m pip wheel --no-deps --wheel-dir=%{_builddir} .
 
 %install
-%{__python3} -m pip install --no-deps --ignore-installed --root=%{buildroot} --prefix=%{_prefix} %{_builddir}/%{name}-%{version}-py3-none-any.whl
+%{__python3} -m pip install --no-deps --ignore-installed --root=%{buildroot} --prefix=%{_prefix} %{_builddir}/fedora_copa-%{version}-py3-none-any.whl
 
 # Install config directory
 install -d %{buildroot}%{_sysconfdir}/copa
@@ -65,7 +65,7 @@ install -Dm644 completions/_copa %{buildroot}%{zsh_completions_dir}/_copa
 %license LICENSE
 %doc README.md README_zh.md
 %{python3_sitelib}/copa/
-%{python3_sitelib}/copa-%{version}.dist-info/
+%{python3_sitelib}/fedora_copa-%{version}.dist-info/
 %{_bindir}/copa
 %{_mandir}/man1/copa.1*
 %{bash_completions_dir}/copa

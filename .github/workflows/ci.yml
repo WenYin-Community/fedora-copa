@@ -81,9 +81,9 @@ jobs:
         run: |
           VERSION=$(grep '__version__' copa/__init__.py | sed 's/.*"\(.*\)"/\1/')
           cd /tmp
-          cp -r $GITHUB_WORKSPACE copa-${VERSION}
-          tar czf $GITHUB_WORKSPACE/copa-${VERSION}.tar.gz copa-${VERSION}
-          rm -rf copa-${VERSION}
+          cp -r $GITHUB_WORKSPACE fedora-copa-${VERSION}
+          tar czf $GITHUB_WORKSPACE/fedora-copa-${VERSION}.tar.gz fedora-copa-${VERSION}
+          rm -rf fedora-copa-${VERSION}
 
       - name: Build RPM
         run: |
@@ -126,9 +126,9 @@ jobs:
         run: |
           VERSION=$(grep '__version__' copa/__init__.py | sed 's/.*"\(.*\)"/\1/')
           cd /tmp
-          cp -r $GITHUB_WORKSPACE copa-${VERSION}
-          tar czf $GITHUB_WORKSPACE/copa-${VERSION}.tar.gz copa-${VERSION}
-          rm -rf copa-${VERSION}
+          cp -r $GITHUB_WORKSPACE fedora-copa-${VERSION}
+          tar czf $GITHUB_WORKSPACE/fedora-copa-${VERSION}.tar.gz fedora-copa-${VERSION}
+          rm -rf fedora-copa-${VERSION}
 
       - name: Build SRPM
         run: |
