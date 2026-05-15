@@ -28,8 +28,9 @@ class TestDnfBackend:
         backend = DnfBackend(binary="dnf")
         assert backend._repo_flag == "--repoid"
 
+    @patch("copa.utils.get_dnf_binary", return_value="dnf5")
     @patch("subprocess.run")
-    def test_run_command(self, mock_run):
+    def test_run_command(self, mock_run, mock_binary):
         """Run command with LANG=C and timeout"""
         mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
         backend = DnfBackend()
@@ -42,8 +43,9 @@ class TestDnfBackend:
             timeout=60,
         )
 
+    @patch("copa.utils.get_dnf_binary", return_value="dnf5")
     @patch("subprocess.run")
-    def test_run_command_with_sudo(self, mock_run):
+    def test_run_command_with_sudo(self, mock_run, mock_binary):
         """Run sudo command with LANG=C and timeout"""
         mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
         backend = DnfBackend()
@@ -56,8 +58,9 @@ class TestDnfBackend:
             timeout=60,
         )
 
-    def test_parse_repolist(self):
-        """解析 repolist 输出"""
+    @patch("copa.utils.get_dnf_binary", return_value="dnf5")
+    def test_parse_repolist(self, mock_binary):
+        """Parse repolist output"""
         backend = DnfBackend()
         output = """repo id                                                             repo name
 fedora                                                              Fedora 44 - x86_64
@@ -69,7 +72,8 @@ copr:copr.fedorainfracloud.org:user:project                         Copr repo"""
         assert repos[0].name == "Fedora 44 - x86_64"
         assert repos[2].id == "copr:copr.fedorainfracloud.org:user:project"
 
-    def test_get_enabled_repos(self):
+    @patch("copa.utils.get_dnf_binary", return_value="dnf5")
+    def test_get_enabled_repos(self, mock_binary):
         """Get enabled repos categorized"""
         backend = DnfBackend()
         # Mock repolist 方法
@@ -86,16 +90,18 @@ copr:copr.fedorainfracloud.org:user:project                         Copr repo"""
         assert "copr" in repos
         assert "obs" in repos
 
+    @patch("copa.utils.get_dnf_binary", return_value="dnf5")
     @patch("subprocess.run")
-    def test_copr_enable(self, mock_run):
+    def test_copr_enable(self, mock_run, mock_binary):
         """Enable Copr repo"""
         mock_run.return_value = MagicMock(returncode=0)
         backend = DnfBackend()
         result = backend.copr_enable("user/project", "fedora-43-x86_64")
         assert result is True
 
+    @patch("copa.utils.get_dnf_binary", return_value="dnf5")
     @patch("subprocess.run")
-    def test_copr_disable(self, mock_run):
+    def test_copr_disable(self, mock_run, mock_binary):
         """Disable Copr repo"""
         mock_run.return_value = MagicMock(returncode=0)
         backend = DnfBackend()
@@ -147,9 +153,10 @@ copr:copr.fedorainfracloud.org:user:project                         Copr repo"""
             timeout=None,
         )
 
+    @patch("copa.utils.get_dnf_binary", return_value="dnf5")
     @patch("subprocess.run")
-    def test_makecache(self, mock_run):
-        """刷新缓存"""
+    def test_makecache(self, mock_run, mock_binary):
+        """Refresh cache"""
         mock_run.return_value = MagicMock(returncode=0)
         backend = DnfBackend()
         result = backend.makecache()
