@@ -3,9 +3,12 @@
 import argparse
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from copa import __app_name__, __version__
+
+if TYPE_CHECKING:
+    from copa.dnf_backend import DnfBackend, Package
 
 # ANSI color codes
 RED = "\033[91m"
@@ -580,7 +583,7 @@ def cmd_install(args: argparse.Namespace) -> int:
                     engine.search_copr, package, chroot, fedora_version,
                 )
                 future_obs = pool.submit(engine.search_obs, package, fedora_version)
-                for future in as_completed([future_copr, future_obs]):
+                for future in as_completed([future_copr, future_obs]):  # type: ignore[var-annotated, arg-type]
                     try:
                         results = future.result(timeout=60)
                     except Exception:
@@ -674,7 +677,7 @@ def cmd_install(args: argparse.Namespace) -> int:
 
 
 def _resolve_package_name(
-    dnf: Any,
+    dnf: "DnfBackend",
     package: str,
     repo_id: str,
     assumeyes: bool = False,
@@ -688,7 +691,7 @@ def _resolve_package_name(
 
     # 去重
     seen: set[str] = set()
-    unique: list[Any] = []
+    unique: list[Package] = []
     for pkg in found:
         if pkg.name not in seen:
             seen.add(pkg.name)
@@ -1151,15 +1154,18 @@ def cmd_repo(args: argparse.Namespace) -> int:
                     status = "enabled" if repo.id in enabled_ids else "disabled"
                     print(f"  copr:{repo.id} [{status}] [system]")
 
-            # Copr repos managed by copa（不在系统列表中的）
-            for repo in state.copr_repos:
-                copr_repo_id = f"copr:copr.fedorainfracloud.org:{repo.owner}:{repo.project}"
+            # Copr repos managed by copa (not in system list)
+            for copr_repo in state.copr_repos:
+                copr_repo_id = (
+                    f"copr:copr.fedorainfracloud.org:"
+                    f"{copr_repo.owner}:{copr_repo.project}"
+                )
                 if copr_repo_id not in {r.id for r in copr_all}:
-                    print(f"  copr:{repo.owner}/{repo.project} [enabled] [copa]")
-                    if repo.chroot:
-                        print(f"    Chroot: {repo.chroot}")
-                    if repo.installed_packages:
-                        print(f"    Packages: {', '.join(repo.installed_packages)}")
+                    print(f"  copr:{copr_repo.owner}/{copr_repo.project} [enabled] [copa]")
+                    if copr_repo.chroot:
+                        print(f"    Chroot: {copr_repo.chroot}")
+                    if copr_repo.installed_packages:
+                        print(f"    Packages: {', '.join(copr_repo.installed_packages)}")
 
         # Display OBS repos
         obs_all = [
@@ -1531,7 +1537,7 @@ def cmd_remove(args: argparse.Namespace) -> int:
 
     # Deduplicate by name
     seen: set[str] = set()
-    unique: list[Any] = []
+    unique: list[Package] = []
     for pkg in found:
         if pkg.name not in seen:
             seen.add(pkg.name)

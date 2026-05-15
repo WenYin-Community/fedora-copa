@@ -38,7 +38,7 @@ class DnfBackend:
         self._repo_flag = "--repo" if "dnf5" in self._binary else "--repoid"
 
     def _run(
-        self, args: list[str], sudo: bool = False, timeout: int = 60
+        self, args: list[str], sudo: bool = False, timeout: int | None = 60
     ) -> subprocess.CompletedProcess[str]:
         """Execute dnf command"""
         import os
