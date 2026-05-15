@@ -25,6 +25,8 @@ build-fedora44:
 		--target noarch
 	@echo "Fedora 44 build complete!"
 
+srpm: build-srpm
+
 build-srpm:
 	@echo "Building source RPM..."
 	@mkdir -p build/SRPMS
