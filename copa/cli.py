@@ -482,7 +482,7 @@ def cmd_install(args: argparse.Namespace) -> int:
         print("[dry-run] Will execute:")
         print(f"  1. Search {package} in Copr/OBS")
         if args.include_local_repo:
-            print(f"     Also search: Fedora/RPM Fusion/Terra")
+            print("     Also search: Fedora/RPM Fusion/Terra")
         print(f"  2. If found: sudo dnf5 install {package}")
         print("  3. If from Copr/OBS, ask whether to keep repo")
         return 0
@@ -612,7 +612,7 @@ def cmd_install(args: argparse.Namespace) -> int:
                     if data.supports_chroot:
                         chroot_status = "✓"
                     elif data.best_chroot:
-                        chroot_status = f"⚠ fallback"
+                        chroot_status = "⚠ fallback"
                     else:
                         chroot_status = "✗"
                     print(f"  [{i:2d}] [Copr] {data.project.owner}/{data.project.name}")
@@ -679,7 +679,7 @@ def _resolve_package_name(
     repo_id: str,
     assumeyes: bool = False,
 ) -> str | None:
-    """Search for actual package name in the repo, list for user selection. Returns None if not found."""
+    """Search for actual package name in the repo, list for user selection."""
     found = dnf.search(package, repo=repo_id)
 
     if not found:
@@ -1128,14 +1128,15 @@ def cmd_repo(args: argparse.Namespace) -> int:
     if args.repo_command == "list":
         print("Third-party repos:\n")
 
-        # Get enabled and all repos to distinguish status
-        enabled_repos = dnf.get_enabled_repos()
+        # Get all repos to distinguish status
         all_repos = dnf.repolist(enabled_only=False)
         enabled_ids = {r.id for r in dnf.repolist(enabled_only=True)}
 
         # Display Copr repos
-        copr_enabled = enabled_repos.get("copr", [])
-        copr_all = [r for r in all_repos if r.id.lower().startswith("copr:") or r.id.lower().startswith("coprdep:")]
+        copr_all = [
+            r for r in all_repos
+            if r.id.lower().startswith("copr:") or r.id.lower().startswith("coprdep:")
+        ]
         if copr_all or state.copr_repos:
             print("Copr repos:")
             # System Copr repos (including disabled)
@@ -1152,7 +1153,8 @@ def cmd_repo(args: argparse.Namespace) -> int:
 
             # Copr repos managed by copa（不在系统列表中的）
             for repo in state.copr_repos:
-                if f"copr:copr.fedorainfracloud.org:{repo.owner}:{repo.project}" not in {r.id for r in copr_all}:
+                copr_repo_id = f"copr:copr.fedorainfracloud.org:{repo.owner}:{repo.project}"
+                if copr_repo_id not in {r.id for r in copr_all}:
                     print(f"  copr:{repo.owner}/{repo.project} [enabled] [copa]")
                     if repo.chroot:
                         print(f"    Chroot: {repo.chroot}")
@@ -1160,7 +1162,10 @@ def cmd_repo(args: argparse.Namespace) -> int:
                         print(f"    Packages: {', '.join(repo.installed_packages)}")
 
         # Display OBS repos
-        obs_all = [r for r in all_repos if r.id.lower().startswith("home_") or r.id.lower().startswith("home:")]
+        obs_all = [
+            r for r in all_repos
+            if r.id.lower().startswith("home_") or r.id.lower().startswith("home:")
+        ]
         if obs_all or state.obs_repos:
             print("\nOBS repos:")
             for repo in obs_all:

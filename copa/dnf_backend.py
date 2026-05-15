@@ -52,7 +52,9 @@ class DnfBackend:
         try:
             # sudo commands don't capture output so password prompt is visible
             if sudo:
-                return subprocess.run(cmd, text=True, capture_output=False, env=env, timeout=timeout)
+                return subprocess.run(
+                    cmd, text=True, capture_output=False, env=env, timeout=timeout
+                )
             return subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=timeout)
         except subprocess.TimeoutExpired:
             return subprocess.CompletedProcess(cmd, returncode=1, stdout="", stderr="Timed out")
