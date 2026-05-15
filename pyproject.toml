@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "copa"
-version = "0.1.0"
+version = "0.5.0"
 description = "DNF5 风格的 Fedora Copr 软件包助手"
 readme = "README.md"
 license = {text = "GPL-2.0-or-later"}

@@ -39,7 +39,7 @@ class TestSearchConfig:
         assert config.enable_copr is True
 
     def test_custom_values(self):
-        """自定义值"""
+        """Custom values"""
         config = SearchConfig(enable_fedora=False, enable_copr=False)
         assert config.enable_fedora is False
         assert config.enable_copr is False

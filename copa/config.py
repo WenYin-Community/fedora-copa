@@ -121,7 +121,7 @@ class Config:
         config_path = path or DEFAULT_CONFIG_PATH
         config_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # 使用简单字符串格式保存
+        # Save using simple string format
         lines = ["# copa configuration file\n"]
 
         lines.append("[search]")

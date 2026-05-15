@@ -3,6 +3,41 @@
 import shutil
 import subprocess
 import sys
+import time
+from functools import wraps
+from typing import Any, Callable, TypeVar
+
+F = TypeVar("F", bound=Callable[..., Any])
+
+
+def retry(
+    max_attempts: int = 3,
+    delay: float = 1.0,
+    backoff: float = 2.0,
+    exceptions: tuple[type[BaseException], ...] = (Exception,),
+) -> Callable[[F], F]:
+    """Retry decorator with exponential backoff"""
+    def decorator(func: F) -> F:
+        @wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            last_exc: BaseException | None = None
+            wait = delay
+            for attempt in range(max_attempts):
+                try:
+                    return func(*args, **kwargs)
+                except exceptions as e:
+                    last_exc = e
+                    if attempt < max_attempts - 1:
+                        print(
+                            f"  Retry {attempt + 1}/{max_attempts} "
+                            f"after {wait:.0f}s: {e}",
+                            file=sys.stderr,
+                        )
+                        time.sleep(wait)
+                        wait *= backoff
+            raise last_exc  # type: ignore[misc]
+        return wrapper  # type: ignore[return-value]
+    return decorator
 
 
 def check_command_exists(command: str) -> bool:
@@ -11,28 +46,28 @@ def check_command_exists(command: str) -> bool:
 
 
 def check_dnf5() -> bool:
-    """检查 dnf5 是否可用"""
+    """Check if dnf5 is available"""
     return check_command_exists("dnf5")
 
 
 def check_dnf() -> bool:
-    """检查 dnf 是否可用"""
+    """Check if dnf is available"""
     return check_command_exists("dnf")
 
 
 def check_copr_cli() -> bool:
-    """检查 copr-cli 是否可用"""
+    """Check if copr-cli is available"""
     return check_command_exists("copr-cli")
 
 
 def get_dnf_binary() -> str:
-    """获取可用的 dnf 二进制文件"""
+    """Get available dnf binary"""
     if check_dnf5():
         return "dnf5"
     elif check_dnf():
         return "dnf"
     else:
-        print("错误: 未找到 dnf5 或 dnf", file=sys.stderr)
+        print("Error: dnf5 or dnf not found", file=sys.stderr)
         sys.exit(1)
 
 
@@ -80,7 +115,7 @@ def select_from_list(
     options: list[str],
     allow_quit: bool = True,
 ) -> int | None:
-    """从列表中选择"""
+    """Select from a list"""
     for i, option in enumerate(options, 1):
         print(f"  [{i}] {option}")
 
@@ -99,7 +134,7 @@ def select_from_list(
                 return choice - 1
             print(f"请输入 1-{len(options)} 之间的数字")
         except ValueError:
-            print("请输入有效的数字或 'q' 取消")
+            print("Enter a valid number or 'q' to cancel")
 
 
 def format_size(size_bytes: int) -> str:
@@ -113,15 +148,15 @@ def format_size(size_bytes: int) -> str:
 
 
 def print_error(message: str) -> None:
-    """打印错误信息"""
+    """Print error message"""
     print(f"错误: {message}", file=sys.stderr)
 
 
 def print_warning(message: str) -> None:
-    """打印警告信息"""
+    """Print warning message"""
     print(f"警告: {message}", file=sys.stderr)
 
 
 def print_info(message: str) -> None:
-    """打印信息"""
+    """Print info message"""
     print(message)

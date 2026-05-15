@@ -28,28 +28,42 @@ class Repo:
 class DnfBackend:
     """DNF5 backend wrapper"""
 
-    def __init__(self, use_dnf5: bool = True):
-        self.use_dnf5 = use_dnf5
-        self._binary = "dnf5" if use_dnf5 else "dnf"
+    def __init__(self, binary: str | None = None):
+        if binary:
+            self._binary = binary
+        else:
+            from copa.utils import get_dnf_binary
+            self._binary = get_dnf_binary()
+        # dnf5 uses --repo, dnf uses --repoid
+        self._repo_flag = "--repo" if "dnf5" in self._binary else "--repoid"
 
     def _run(
-        self, args: list[str], sudo: bool = False
+        self, args: list[str], sudo: bool = False, timeout: int = 60
     ) -> subprocess.CompletedProcess[str]:
         """Execute dnf command"""
+        import os
         cmd: list[str] = []
         if sudo:
             cmd.append("sudo")
         cmd.append(self._binary)
         cmd.extend(args)
-        return subprocess.run(cmd, capture_output=True, text=True)
+        # Force LANG=C for consistent English output (field names, etc.)
+        env = {**os.environ, "LANG": "C", "LC_ALL": "C"}
+        try:
+            # sudo commands don't capture output so password prompt is visible
+            if sudo:
+                return subprocess.run(cmd, text=True, capture_output=False, env=env, timeout=timeout)
+            return subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            return subprocess.CompletedProcess(cmd, returncode=1, stdout="", stderr="Timed out")
 
     def search(
         self, keyword: str, repo: str | None = None
     ) -> list[Package]:
-        """Search packages"""
-        args = ["repoquery", "--queryinfo", keyword]
+        """Search packages using substring match"""
+        args = ["repoquery", "--info", f"*{keyword}*"]
         if repo:
-            args.extend(["--repo", repo])
+            args.extend([self._repo_flag, repo])
 
         result = self._run(args)
         if result.returncode != 0:
@@ -123,8 +137,8 @@ class DnfBackend:
 
         # 跳过标题行
         for line in lines[1:]:
-            # 使用多个空格作为分隔符
-            # 格式: repo_id<多个空格>repo_name
+            # Multiple spaces as separator
+            # Format: repo_id<spaces>repo_name
             parts = line.split(None, 1)
             if len(parts) >= 2:
                 repo_id = parts[0].strip()
@@ -171,10 +185,10 @@ class DnfBackend:
         if not repo_ids:
             return []
 
-        args = ["repoquery", "--queryinfo"]
+        args = ["repoquery", "--info"]
         for repo_id in repo_ids:
-            args.extend(["--repo", repo_id])
-        args.append(keyword)
+            args.extend([self._repo_flag, repo_id])
+        args.append(f"*{keyword}*")
 
         result = self._run(args)
         if result.returncode != 0:
@@ -183,19 +197,32 @@ class DnfBackend:
         return self._parse_repoquery(result.stdout)
 
     def install(self, package: str, repo: str | None = None) -> bool:
-        """Install package"""
+        """Install package (no timeout for large downloads)"""
         args = ["install", package]
         if repo:
-            args.extend(["--repo", repo])
+            args.extend([self._repo_flag, repo])
 
-        result = self._run(args, sudo=True)
+        result = self._run(args, sudo=True, timeout=None)
         return result.returncode == 0
+
+    def remove(self, package: str) -> bool:
+        """Remove installed package"""
+        result = self._run(["remove", package], sudo=True)
+        return result.returncode == 0
+
+    def search_installed(self, keyword: str) -> list[Package]:
+        """Search installed packages by keyword"""
+        args = ["repoquery", "--info", "--installed", f"*{keyword}*"]
+        result = self._run(args)
+        if result.returncode != 0:
+            return []
+        return self._parse_repoquery(result.stdout)
 
     def makecache(self, repo: str | None = None) -> bool:
         """Refresh cache"""
         args = ["makecache"]
         if repo:
-            args.extend(["--repo", repo])
+            args.extend([self._repo_flag, repo])
         else:
             args.append("--refresh")
 
@@ -227,7 +254,7 @@ class DnfBackend:
         if result.returncode != 0:
             return []
 
-        # 解析输出，每行是一个 copr 仓库
+        # Parse output, each line is a copr repo
         return [line.strip() for line in result.stdout.strip().split("\n") if line.strip()]
 
     def get_chroot(self) -> str:
@@ -236,7 +263,7 @@ class DnfBackend:
         try:
             with open("/etc/os-release") as f:
                 content = f.read()
-            version_match = re.search(r'VERSION_ID="(\d+)"', content)
+            version_match = re.search(r'VERSION_ID="?(\d+)"?', content)
             if version_match:
                 version = version_match.group(1)
             else:
@@ -255,7 +282,7 @@ class DnfBackend:
         try:
             with open("/etc/os-release") as f:
                 content = f.read()
-            version_match = re.search(r'VERSION_ID="(\d+)"', content)
+            version_match = re.search(r'VERSION_ID="?(\d+)"?', content)
             if version_match:
                 return int(version_match.group(1))
         except Exception:

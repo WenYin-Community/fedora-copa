@@ -55,10 +55,11 @@ jobs:
 
       - name: Create source archive
         run: |
+          VERSION=$(grep '__version__' copa/__init__.py | sed 's/.*"\(.*\)"/\1/')
           cd /tmp
-          cp -r $GITHUB_WORKSPACE copa-0.1.0
-          tar czf $GITHUB_WORKSPACE/copa-0.1.0.tar.gz copa-0.1.0
-          rm -rf copa-0.1.0
+          cp -r $GITHUB_WORKSPACE copa-${VERSION}
+          tar czf $GITHUB_WORKSPACE/copa-${VERSION}.tar.gz copa-${VERSION}
+          rm -rf copa-${VERSION}
 
       - name: Build RPM
         run: |
@@ -99,10 +100,11 @@ jobs:
 
       - name: Create source archive
         run: |
+          VERSION=$(grep '__version__' copa/__init__.py | sed 's/.*"\(.*\)"/\1/')
           cd /tmp
-          cp -r $GITHUB_WORKSPACE copa-0.1.0
-          tar czf $GITHUB_WORKSPACE/copa-0.1.0.tar.gz copa-0.1.0
-          rm -rf copa-0.1.0
+          cp -r $GITHUB_WORKSPACE copa-${VERSION}
+          tar czf $GITHUB_WORKSPACE/copa-${VERSION}.tar.gz copa-${VERSION}
+          rm -rf copa-${VERSION}
 
       - name: Build SRPM
         run: |

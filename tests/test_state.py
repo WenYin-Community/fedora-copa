@@ -87,7 +87,7 @@ class TestAppState:
         assert repo is None
 
     def test_remove_copr_repo(self):
-        """移除 Copr 仓库"""
+        """Remove Copr repo"""
         state = AppState()
         state.add_copr_repo(
             owner="testuser",
@@ -100,13 +100,13 @@ class TestAppState:
         assert len(state.copr_repos) == 0
 
     def test_remove_copr_repo_not_found(self):
-        """移除不存在的 Copr 仓库"""
+        """Remove non-existent Copr repo"""
         state = AppState()
         result = state.remove_copr_repo("nonexistent", "project")
         assert result is False
 
     def test_was_enabled_by_copa(self):
-        """检查是否由 copa 启用"""
+        """Check if enabled by copa"""
         state = AppState()
         state.add_copr_repo(
             owner="testuser",
@@ -118,7 +118,7 @@ class TestAppState:
         assert state.was_enabled_by_copa("testuser", "testproject") is True
 
     def test_was_not_enabled_by_copa(self):
-        """检查是否不由 copa 启用"""
+        """Check if not enabled by copa"""
         state = AppState()
         state.add_copr_repo(
             owner="testuser",
@@ -151,7 +151,7 @@ class TestAppState:
         assert len(state.copr_repos) == 0
 
     def test_update_existing_copr_repo(self):
-        """更新已存在的 Copr 仓库"""
+        """Update existing Copr repo"""
         state = AppState()
         state.add_copr_repo(
             owner="testuser",

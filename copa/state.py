@@ -1,4 +1,4 @@
-"""状态管理 - 跟踪 Copr 仓库启用状态"""
+"""State management - track Copr/OBS repo enable status"""
 
 import json
 from dataclasses import asdict, dataclass, field
@@ -11,7 +11,7 @@ STATE_FILE = STATE_DIR / "state.json"
 
 @dataclass
 class CoprState:
-    """单个 Copr 仓库的状态"""
+    """State of a single Copr repo"""
     owner: str
     project: str
     repo_id: str
@@ -23,7 +23,7 @@ class CoprState:
 
 @dataclass
 class OBSState:
-    """单个 OBS 仓库的状态"""
+    """State of a single OBS repo"""
     project: str
     repository: str
     repo_file_name: str
@@ -35,14 +35,14 @@ class OBSState:
 
 @dataclass
 class AppState:
-    """应用状态"""
+    """Application state"""
     copr_repos: list[CoprState] = field(default_factory=list)
     obs_repos: list[OBSState] = field(default_factory=list)
     last_updated: str = ""  # ISO format
 
     @classmethod
     def load(cls, path: Path | None = None) -> "AppState":
-        """加载状态文件"""
+        """Load state file"""
         state_path = path or STATE_FILE
 
         if not state_path.exists():
@@ -66,7 +66,7 @@ class AppState:
             return cls()
 
     def save(self, path: Path | None = None) -> None:
-        """保存状态文件"""
+        """Save state file"""
         state_path = path or STATE_FILE
         state_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -89,17 +89,17 @@ class AppState:
         chroot: str,
         enabled_by_copa: bool = True,
     ) -> None:
-        """添加 Copr 仓库状态"""
-        # 检查是否已存在
+        """Add Copr repo state"""
+        # Check if already exists
         for repo in self.copr_repos:
             if repo.owner == owner and repo.project == project:
-                # 更新现有记录
+                # Update existing record
                 repo.repo_id = repo_id
                 repo.chroot = chroot
                 repo.enabled_by_copa = enabled_by_copa
                 return
 
-        # 添加新记录
+        # Add new record
         self.copr_repos.append(CoprState(
             owner=owner,
             project=project,
@@ -110,14 +110,14 @@ class AppState:
         ))
 
     def get_copr_repo(self, owner: str, project: str) -> CoprState | None:
-        """获取 Copr 仓库状态"""
+        """Get Copr repo state"""
         for repo in self.copr_repos:
             if repo.owner == owner and repo.project == project:
                 return repo
         return None
 
     def remove_copr_repo(self, owner: str, project: str) -> bool:
-        """移除 Copr 仓库状态"""
+        """Remove Copr repo state"""
         for i, repo in enumerate(self.copr_repos):
             if repo.owner == owner and repo.project == project:
                 self.copr_repos.pop(i)
@@ -125,7 +125,7 @@ class AppState:
         return False
 
     def was_enabled_by_copa(self, owner: str, project: str) -> bool:
-        """检查是否由 copa 启用"""
+        """Check if enabled by copa"""
         repo = self.get_copr_repo(owner, project)
         return repo.enabled_by_copa if repo else False
 
@@ -137,18 +137,18 @@ class AppState:
         fedora_version: str,
         enabled_by_copa: bool = True,
     ) -> None:
-        """添加 OBS 仓库状态"""
-        # 检查是否已存在
+        """Add OBS repo state"""
+        # Check if already exists
         for repo in self.obs_repos:
             if repo.project == project:
-                # 更新现有记录
+                # Update existing record
                 repo.repository = repository
                 repo.repo_file_name = repo_file_name
                 repo.fedora_version = fedora_version
                 repo.enabled_by_copa = enabled_by_copa
                 return
 
-        # 添加新记录
+        # Add new record
         self.obs_repos.append(OBSState(
             project=project,
             repository=repository,
@@ -159,14 +159,14 @@ class AppState:
         ))
 
     def get_obs_repo(self, project: str) -> OBSState | None:
-        """获取 OBS 仓库状态"""
+        """Get OBS repo state"""
         for repo in self.obs_repos:
             if repo.project == project:
                 return repo
         return None
 
     def remove_obs_repo(self, project: str) -> bool:
-        """移除 OBS 仓库状态"""
+        """Remove OBS repo state"""
         for i, repo in enumerate(self.obs_repos):
             if repo.project == project:
                 self.obs_repos.pop(i)
@@ -174,6 +174,6 @@ class AppState:
         return False
 
     def was_obs_enabled_by_copa(self, project: str) -> bool:
-        """检查 OBS 仓库是否由 copa 启用"""
+        """Check if OBS repo was enabled by copa"""
         repo = self.get_obs_repo(project)
         return repo.enabled_by_copa if repo else False

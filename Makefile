@@ -1,7 +1,7 @@
 .PHONY: build clean test lint
 
 PACKAGE = copa
-VERSION = 0.1.0
+VERSION = $(shell grep '^Version:' rpm/copa.spec | awk '{print $$2}')
 SPEC_FILE = rpm/copa.spec
 
 # Build targets

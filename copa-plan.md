@@ -103,24 +103,23 @@ Example installing `ghostty`:
 copa install ghostty
 ```
 
+Default: Copr + OBS only. Add `--include-local-repo` for Fedora/RPM Fusion/Terra.
+
 Complete flow:
 
-1. Detect currently enabled repos.
-2. Search Fedora official repos.
-3. If Fedora official repos have no results, search RPM Fusion.
-4. If Terra is enabled, search Terra.
-5. If previous sources have no suitable results, or user chooses to continue searching Copr, search Copr repos.
-6. When searching Copr, first query Copr repo names and show candidate list.
-7. Ask user which Copr repo to add.
-8. Enable selected Copr repo based on user choice.
-9. Execute `dnf5 makecache --refresh`.
-10. Execute `dnf5 install <package>`.
-11. After installation, ask user whether to keep this Copr.
-12. If user doesn't keep it, delete/remove the corresponding Copr repo.
-13. If Copr also has no suitable results, or user chooses to continue searching OBS, search OBS repos.
-14. When searching OBS, show matching projects and package info.
-15. Provide OBS repo file download link for manual addition by user.
-16. If OBS package version doesn't match current Fedora version, warn user about risk and provide fallback version.
+1. Parallel search Copr + OBS (ThreadPoolExecutor).
+2. Show unified list: `[Copr] owner/project` or `[OBS] project/name` with chroot/version status and risk level.
+3. User selects project (or `--copr owner/project` specifies directly).
+4. **Copr path**: enable repo → makecache → resolve package name → confirm → install → save state → ask disable.
+5. **OBS path**: download repo file → save state → makecache → resolve package name → confirm → install → ask disable.
+6. Package name resolution: always show numbered list for user selection.
+7. Version fallback: warn if gap > 0, user confirms before proceeding.
+8. On failure/cancel: repo stays enabled, show disable/remove instructions.
+
+With `--include-local-repo`:
+- Search Fedora + RPM Fusion + Terra first, collect all results
+- Deduplicate by name, show numbered list
+- User selects [1-N], 's' to continue to Copr/OBS, 'q' to cancel
 
 ## 6. Detect Enabled Repos
 
@@ -326,23 +325,24 @@ openSUSE Build Service (OBS) is a cross-distro package build service providing p
 
 - **API Base URL**: `https://api.opensuse.org`
 - **CLI tool**: `osc` (written in Python, installable via pip or dnf)
-- **Anonymous access**: Read-only operations don't require authentication
+- **Authentication**: Required. Credentials loaded from `~/.config/osc/oscrc` (user/pass for `api.opensuse.org`). Without credentials, OBS is skipped with a warning.
+- **`osc`**: Required dependency for OBS support (Fedora official repo)
 
 ### OBS Search Implementation
 
-Use OBS REST API to search packages:
+Use OBS REST API to search packages (requires authentication via `~/.config/osc/oscrc`):
 
 ```bash
-# Search projects
-curl -H "Accept: application/xml; charset=utf-8" \
+# Search projects (requires auth)
+curl -u user:pass -H "Accept: application/xml; charset=utf-8" \
   "https://api.opensuse.org/search/project?match=contains(@name,'ghostty')"
 
-# Search packages
-curl -H "Accept: application/xml; charset=utf-8" \
+# Search packages (requires auth)
+curl -u user:pass -H "Accept: application/xml; charset=utf-8" \
   "https://api.opensuse.org/search/package?match=contains(@name,'ghostty')"
 
-# Query Fedora version binary packages
-curl -H "Accept: application/xml; charset=utf-8" \
+# Query Fedora version binary packages (requires auth)
+curl -u user:pass -H "Accept: application/xml; charset=utf-8" \
   "https://api.opensuse.org/search/released/binary?match=name='ghostty'+and+repository='Fedora_43'"
 ```
 
@@ -411,7 +411,7 @@ Project: home:user1
 Repository: Fedora_43
 Version: 1.0.0
 
-Downloading repo file to /etc/yum.repos.d/obs_home_user1.repo...
+Downloading repo file to /etc/yum.repos.d/home:user1.repo...
 ✓ Repo file downloaded.
 
 The following commands will be executed:
@@ -426,7 +426,7 @@ Implementation flow:
 
 ```bash
 # 1. Auto-download repo file (no user confirmation needed)
-sudo curl -o /etc/yum.repos.d/obs_<project>.repo \
+sudo curl -o /etc/yum.repos.d/<project>.repo \
   "https://download.opensuse.org/repositories/<project>/Fedora_43/<project>.repo"
 
 # 2. Ask user whether to continue (default Enter = install)
@@ -472,16 +472,18 @@ Default strategy: Disable OBS repo (consistent with Copr)
 
 ### OBS Repo File Naming
 
-To avoid conflicts, OBS repo files are named:
+OBS repo files preserve the original project name (colons kept):
 
 ```text
-/etc/yum.repos.d/obs_<project_name>.repo
+/etc/yum.repos.d/<project_name>.repo
 ```
 
-Where `:` in `<project_name>` is replaced with `_`, for example:
+Examples:
 
-- `home:user1` → `obs_home_user1.repo`
-- `science` → `obs_science.repo`
+- `home:user1` → `home:user1.repo`
+- `science` → `science.repo`
+
+DNF repo ID uses underscores (colons → underscores), e.g. `home:user1` → `home_user1`. `remove_repo_file()` tries both formats for compatibility.
 
 ### Differences Between OBS and Copr
 
@@ -491,7 +493,7 @@ Where `:` in `<project_name>` is replaced with `_`, for example:
 | Search | Copr API | OBS API |
 | Version matching | Chroot mechanism | Repository name matching |
 | Automation level | High (auto-enable) | Medium (auto-download repo) |
-| Post-install handling | `dnf5 copr disable` | `dnf config-manager --set-disabled` |
+| Post-install handling | `dnf5 copr disable` | `dnf config-manager --set-disabled` or `rm` repo file |
 | Risk warning | Risk scoring | Version mismatch warning |
 
 ## 12. Enable User-Selected Copr
@@ -1182,7 +1184,7 @@ The following issues have been confirmed:
 9. `copr-cli` as hard dependency.
 10. MVP supports single package installation first, not supporting installing multiple packages at once.
 
-## 24. Current Implementation Status (2025-05-14)
+## 24. Current Implementation Status (2025-05-15)
 
 ### Completed Features
 
@@ -1192,13 +1194,14 @@ The following issues have been confirmed:
 | Multi-keyword search | `copa search ghostty terminal` | ✅ |
 | Regex search | `copa search -x "^ghost"` | ✅ |
 | Install flow | `copa install <pkg>` | ✅ |
+| Remove flow | `copa remove <pkg>` | ✅ |
 | Package info query | `copa info <pkg>` | ✅ |
 | Package list | `copa list --packages owner/project` | ✅ |
 | Repo management | `copa repo list/enable/disable/remove` | ✅ |
 | Repo audit | `copa audit` | ✅ |
 | Copr search | Copr API integration | ✅ |
 | OBS search | OBS REST API integration | ✅ |
-| Version fallback | OBS package version mismatch warning | ✅ |
+| Version fallback | Copr chroot + OBS repo version fallback | ✅ |
 | Risk assessment | Risk word identification + chroot check | ✅ |
 | Post-install strategy | Keep repo by default, user can disable/remove | ✅ |
 | Dry-run mode | `--dry-run` | ✅ |
@@ -1211,7 +1214,7 @@ The following issues have been confirmed:
 | Shell completion | `completions/copa.bash` + `completions/_copa` | ✅ |
 | Man page | `man/copa.1` | ✅ |
 | Ctrl+C handling | Signal handler | ✅ |
-| Tests | 47 unit tests | ✅ |
+| Tests | 51 unit tests | ✅ |
 | GitHub Actions | CI/CD with lint, test, RPM build | ✅ |
 
 ### Incomplete Features
@@ -1228,5 +1231,192 @@ Inspired by paru implementation, using the following matching rules:
 - **Matching method**: Substring containment (`contains`)
 - **Regex mode**: `-x` flag, match package names only
 - **Multiple keywords**: AND logic (all words must match simultaneously)
-- **Search fields**: Package name, project name, Owner, description
+- **Search fields**: Package name, project name, Owner (description excluded)
 - **Filtering**: Client-side secondary filtering for accuracy
+
+## 25. Install Flow (v0.5.0)
+
+### Local Repo Install (Fedora / RPM Fusion / Terra) — requires `--include-local-repo`
+
+```
+copa install --include-local-repo <package>
+  │
+  ├─ 1. Search Fedora + RPM Fusion + Terra in sequence
+  │     Command: dnf repoquery --info --repo <repo_id> *<package>*
+  │     Collect all results into one list
+  │
+  ├─ 2. Deduplicate by package name
+  │
+  ├─ 3. Display numbered list
+  │     [ 1] aftertheflood-sparks-bar-fonts (Fedora)
+  │     [ 2] lightspark (RPM Fusion)
+  │     [ 3] spark (Terra)
+  │
+  ├─ 4. User selects [1-N], 's' to search Copr/OBS, 'q' to cancel
+  │     ├─ Number → install selected package
+  │     ├─ 's' → fall through to Copr/OBS search
+  │     └─ 'q' → exit
+  │
+  ├─ 5. -y mode: auto-select first result
+  │
+  └─ 6. Install: sudo dnf5 install <selected_name>
+```
+
+### Copr Install Flow
+
+```
+copa install <package>
+  │
+  ├─ 1. Parallel search Copr + OBS (ThreadPoolExecutor, max_workers=2)
+  │     └─ search_copr(query, chroot, fedora_version)
+  │           ├─ copr.search_projects(query) → substring match on project name/owner
+  │           ├─ _find_best_copr_chroot():
+  │           │     ├─ Exact match: chroot in project.chroots → gap=0
+  │           │     ├─ Fallback: gap 1~2 versions → best_chroot, gap
+  │           │     └─ No match: best_chroot=None, gap=-1
+  │           └─ _assess_copr_risk():
+  │                 gap=0 → low, gap=1 → medium, gap≥2 → high, none → blocked
+  │
+  ├─ 2. Unified display list
+  │     ✓ exact | ⚠ fallback | ✗ no match
+  │
+  ├─ 3. User selects project
+  │
+  └─ _install_from_copr(selected, chroot)
+       │
+       ├─ 4. use_chroot = selected.best_chroot or chroot
+       │
+       ├─ 5. Version fallback warning (version_gap > 0)
+       │     └─ Confirm: "Continue anyway? [y/N]" → cancel returns 0
+       │
+       ├─ 6. Enable repo: sudo dnf5 copr enable owner/project <chroot>
+       │
+       ├─ 7. Refresh cache: sudo dnf5 makecache --refresh
+       │
+       ├─ 8. Resolve package name: dnf5 repoquery --repo copr:...
+       │     └─ _resolve_package_name(): deduplicate, single→return, multiple→user picks
+       │
+       ├─ 9. Confirm: "Install {name}? [Y/n]" (skipped with -y)
+       │     └─ Cancel → return 0, repo stays enabled
+       │
+       ├─ 10. Install: sudo dnf5 install {name}
+       │     ├─ Success → save state, ask "Disable repo now? [y/N]"
+       │     └─ Failure → return 1, repo stays enabled, show disable/remove instructions
+       │
+       └─ 11. Post-install
+              └─ User disables → sudo dnf5 copr disable owner/project
+```
+
+### OBS Install Flow
+
+```
+copa install <package>
+  │
+  ├─ 1. Parallel search Copr + OBS
+  │     └─ search_obs(query, fedora_version)
+  │           ├─ obs.search_packages(query) → substring match on package/project name
+  │           ├─ obs.find_fedora_repos(project, fedora_version, max_fallback=2)
+  │           │     ├─ Extract Fedora version from repo names
+  │           │     ├─ Filter gap 0~2, sort by gap (prefer current)
+  │           │     └─ Return sorted list
+  │           └─ _assess_obs_risk():
+  │                 gap=0 → low, gap=1 → medium, gap≥2 → high
+  │
+  ├─ 2. Unified display list
+  │     ✓ exact | ⚠ fallback | ✗ no match
+  │
+  ├─ 3. User selects project
+  │
+  └─ _install_from_obs(selected, fedora_version)
+       │
+       ├─ 4. Version fallback warning (!has_current_version)
+       │     └─ Confirm: "Continue anyway? [y/N]" (--allow-obs-fallback skips)
+       │
+       ├─ 5. Download repo file: sudo curl -o /etc/yum.repos.d/{project}.repo
+       │
+       ├─ 6. Save state (immediately, before install)
+       │
+       ├─ 7. Refresh cache: sudo dnf5 makecache --refresh
+       │
+       ├─ 8. Resolve package name: dnf5 repoquery --repo home_xxx
+       │     └─ _resolve_package_name()
+       │
+       ├─ 9. Confirm: "Install {name}? [Y/n]" (skipped with -y)
+       │     └─ Cancel → return 0, repo stays enabled
+       │
+       ├─ 10. Install: sudo dnf5 install {name}
+       │     ├─ Success → ask "Disable repo now? [y/N]"
+       │     └─ Failure → return 1, repo stays enabled, show disable/remove instructions
+       │
+       └─ 11. Post-install
+              ├─ Disable → sudo dnf config-manager --set-disabled home_xxx
+              └─ Remove → sudo rm /etc/yum.repos.d/home:xxx.repo
+```
+
+### Copr vs OBS Comparison
+
+| Feature | Copr | OBS |
+|---------|------|-----|
+| Version fallback | `best_chroot` from chroot list | `find_fedora_repos` from repo list |
+| Max fallback | 2 versions | 2 versions |
+| Fallback confirm | `Continue anyway? [y/N]` | `Continue anyway? [y/N]` |
+| Skip confirm | `-y` | `--allow-obs-fallback` |
+| Repo enable | `dnf5 copr enable` | `curl` download repo file |
+| State save timing | After install success | After repo download (before install) |
+| Package name resolve | `repoquery --repo copr:...` | `repoquery --repo obs_...` |
+| Cancel install | Repo stays enabled | Repo stays enabled |
+| Install failure | Repo stays enabled, return 1 | Repo stays enabled, return 1 |
+| Risk levels | gap=1 medium / gap≥2 high | gap=1 medium / gap≥2 high |
+
+### Key Design Decisions
+
+1. **Parallel search**: Copr and OBS searched concurrently via `ThreadPoolExecutor(max_workers=2)`
+2. **Package name resolution**: `_resolve_package_name()` searches inside the enabled repo to find the actual RPM name (project name ≠ package name)
+3. **Repo stays enabled on failure/cancel**: User gets explicit disable/remove instructions, no silent auto-disable
+4. **Version fallback with risk warning**: Both Copr and OBS support max 2 version fallback with explicit user confirmation
+5. **Retry with backoff**: Network calls use `@retry` decorator (3 attempts, exponential backoff), only retries on connection/timeout errors (not 4xx)
+6. **State tracking**: `~/.local/share/copa/state.json` records repos enabled by copa for cleanup
+
+## 26. Remove Flow (v0.5.0)
+
+```
+copa remove <package>
+  │
+  ├─ 1. Search installed packages
+  │     Command: dnf repoquery --info --installed *<package>*
+  │     └─ Purely local, no network
+  │
+  ├─ 2. Not found → "Package '<package>' is not installed" → return 1
+  │
+  ├─ 3. Deduplicate by name
+  │
+  ├─ 4. Single match:
+  │     ├─ Show: <name>-<evr> (<repo>)
+  │     ├─ Confirm: "Remove <name>? [y/N]" (skipped with -y)
+  │     ├─ y → sudo dnf5 remove <name>
+  │     └─ N → "Cancelled" → return 0
+  │
+  ├─ 5. Multiple matches:
+  │     ├─ Show numbered list:
+  │     │   [1] name1-evr1 (repo1)
+  │     │       summary1
+  │     │   [2] name2-evr2 (repo2)
+  │     │       summary2
+  │     ├─ Interactive: "Select package to remove [1-N, q to cancel]"
+  │     │   ├─ Input number → select target
+  │     │   └─ q → return 0
+  │     ├─ -y mode: auto-select first
+  │     ├─ Confirm: "Remove <name>? [y/N]"
+  │     └─ sudo dnf5 remove <name>
+  │
+  ├─ 6. Success → "Removed successfully" → return 0
+  │
+  └─ 7. Failure → "Remove failed" → return 1
+```
+
+Key points:
+- Purely local operation, no network queries
+- Uses `--installed` flag to query only installed packages
+- Substring matching via `*keyword*` glob pattern
+- User must explicitly select which package to remove
+- No automatic repo disable/remove after uninstall (use `copa repo disable/remove` separately)

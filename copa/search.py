@@ -32,6 +32,8 @@ class CoprSearchResult:
     risk_level: str  # low, medium, high, blocked
     supports_chroot: bool
     has_package: bool
+    best_chroot: str | None = None  # 最佳匹配的 chroot（含 fallback）
+    version_gap: int = 0  # 版本差距，0 = 精确匹配
 
 
 @dataclass
@@ -45,7 +47,7 @@ class OBSSearchResult:
 
 
 class SearchEngine:
-    """搜索引擎"""
+    """Search engine"""
 
     def __init__(
         self,
@@ -72,44 +74,91 @@ class SearchEngine:
         # TODO: 实现
         return []
 
-    def search_copr(self, keyword: str, chroot: str) -> list[CoprSearchResult]:
-        """搜索 Copr 仓库 - 子字符串匹配项目名或描述"""
+    def _find_best_copr_chroot(
+        self,
+        chroots: list[str],
+        current_chroot: str,
+        current_fedora_version: int,
+        max_fallback: int = 2,
+    ) -> tuple[str | None, int]:
+        """从 chroot 列表中找最佳匹配，支持版本降级
+
+        Returns:
+            (best_chroot, version_gap) - 找不到返回 (None, -1)
+        """
+        # 精确匹配
+        if current_chroot in chroots:
+            return current_chroot, 0
+
+        # 尝试降级匹配
+        best = None
+        best_gap = -1
+        for c in chroots:
+            version = self.obs._extract_fedora_version(c)
+            if not version:
+                continue
+            try:
+                v = int(version)
+                gap = current_fedora_version - v
+                if 0 < gap <= max_fallback and (best is None or gap < best_gap):
+                    best = c
+                    best_gap = gap
+            except ValueError:
+                continue
+
+        return best, best_gap
+
+    def search_copr(
+        self,
+        keyword: str,
+        chroot: str,
+        current_fedora_version: int = 0,
+        max_fallback: int = 2,
+    ) -> list[CoprSearchResult]:
+        """搜索 Copr 仓库 - 子字符串匹配项目名或 owner"""
         projects = self.copr.search_projects(keyword)
         results = []
         # 支持多关键词 AND 逻辑
         keywords = keyword.lower().split()
 
         for project in projects:
-            # 过滤：项目名、owner 或描述必须包含所有关键词
+            # Filter: project name or owner must contain all keywords
             project_name_lower = project.name.lower()
             owner_lower = project.owner.lower()
-            desc_lower = project.description.lower()
 
-            # 检查是否包含所有关键词
             def matches_all_keywords(text: str) -> bool:
                 return all(kw in text for kw in keywords)
 
             name_match = matches_all_keywords(project_name_lower)
             owner_match = matches_all_keywords(owner_lower)
-            desc_match = matches_all_keywords(desc_lower)
 
-            # 跳过不匹配的项目
-            if not name_match and not owner_match and not desc_match:
+            if not name_match and not owner_match:
                 continue
 
-            supports_chroot = chroot in project.chroots
-            risk_level = self._assess_copr_risk(project, supports_chroot)
+            # 查找最佳 chroot（含 fallback）
+            best_chroot, version_gap = self._find_best_copr_chroot(
+                project.chroots, chroot, current_fedora_version, max_fallback,
+            )
+            supports_chroot = version_gap == 0
+            risk_level = self._assess_copr_risk(project, supports_chroot, version_gap)
 
             results.append(CoprSearchResult(
                 project=project,
                 risk_level=risk_level,
                 supports_chroot=supports_chroot,
                 has_package=name_match,
+                best_chroot=best_chroot,
+                version_gap=version_gap,
             ))
 
         return results
 
-    def _assess_copr_risk(self, project: CoprProject, supports_chroot: bool) -> str:
+    def _assess_copr_risk(
+        self,
+        project: CoprProject,
+        supports_chroot: bool,
+        version_gap: int = 0,
+    ) -> str:
         """评估 Copr 风险等级"""
         desc_lower = project.description.lower()
         instructions_lower = project.instructions.lower()
@@ -120,9 +169,17 @@ class SearchEngine:
             if word in desc_lower or word in instructions_lower:
                 return "blocked"
 
-        # 检查是否支持当前 chroot
-        if not supports_chroot:
+        # No usable chroot at all
+        if version_gap < 0:
+            return "blocked"
+
+        # Fallback 2 versions
+        if version_gap >= 2:
             return "high"
+
+        # Fallback 1 version
+        if version_gap == 1:
+            return "medium"
 
         # 中等风险词
         medium_risk_words = ["testing", "experimental", "beta", "unstable"]
@@ -202,7 +259,7 @@ class SearchEngine:
         no_obs: bool = False,
         max_obs_fallback: int = 2,
     ) -> tuple[list[SearchResult], list[CoprSearchResult], list[OBSSearchResult]]:
-        """搜索所有来源"""
+        """Search all sources"""
         fedora_results = []
         rpmfusion_results = []
         terra_results = []
@@ -221,7 +278,7 @@ class SearchEngine:
 
         if not official_only and not rpmfusion_only:
             chroot = self.dnf.get_chroot()
-            copr_results = self.search_copr(keyword, chroot)
+            copr_results = self.search_copr(keyword, chroot, current_fedora_version)
 
         if not no_obs and not official_only and not rpmfusion_only and not copr_only:
             obs_results = self.search_obs(keyword, current_fedora_version, max_obs_fallback)

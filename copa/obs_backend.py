@@ -1,4 +1,4 @@
-"""OBS 后端 - 处理与 openSUSE Build Service 的交互"""
+"""OBS backend - handles interaction with openSUSE Build Service"""
 
 import re
 import subprocess
@@ -59,15 +59,57 @@ class OBSBackend:
 
     def __init__(self, api_base: str = OBS_API_BASE):
         self.api_base = api_base
+        self._auth = self._load_osc_auth()
         self.client = httpx.Client(
             headers={"Accept": "application/xml; charset=utf-8"},
-            timeout=30.0,
+            timeout=60.0,
+            auth=self._auth,
         )
+        self._available: bool | None = None  # cached health check result
+
+    @staticmethod
+    def _load_osc_auth() -> httpx.BasicAuth | None:
+        """Load credentials from ~/.config/osc/oscrc"""
+        oscrc = Path.home() / ".config" / "osc" / "oscrc"
+        if not oscrc.exists():
+            return None
+        try:
+            import configparser
+            cfg = configparser.ConfigParser()
+            cfg.read(oscrc)
+            for section in cfg.sections():
+                if "api.opensuse.org" in section:
+                    user = cfg.get(section, "user", fallback=None)
+                    passwd = cfg.get(section, "pass", fallback=None)
+                    if user and passwd:
+                        return httpx.BasicAuth(user, passwd)
+        except Exception:
+            pass
+        return None
+
+    @property
+    def has_auth(self) -> bool:
+        """Whether OBS credentials are configured"""
+        return self._auth is not None
+
+    def is_available(self) -> bool:
+        """Quick health check - result cached after first call"""
+        if self._available is not None:
+            return self._available
+        if not self.has_auth:
+            self._available = False
+            return False
+        try:
+            resp = self.client.head(f"{self.api_base}/", timeout=10.0, follow_redirects=True)
+            self._available = resp.status_code < 500
+        except Exception:
+            self._available = False
+        return self._available
 
     def _get(
         self, path: str, params: dict[str, str] | None = None
     ) -> ET.Element:
-        """Send GET request"""
+        """Send GET request - no retry, fail fast"""
         url = f"{self.api_base}{path}"
         response = self.client.get(url, params=params)
         response.raise_for_status()
@@ -75,6 +117,8 @@ class OBSBackend:
 
     def search_projects(self, query: str, limit: int = 20) -> list[OBSProject]:
         """Search projects"""
+        if not self.is_available():
+            return []
         try:
             root = self._get("/search/project", {"match": f"contains(@name,'{query}')"})
             projects = []
@@ -93,6 +137,8 @@ class OBSBackend:
 
     def search_packages(self, query: str, limit: int = 20) -> list[OBSPackage]:
         """Search packages - substring match"""
+        if not self.is_available():
+            return []
         try:
             # Use contains() for substring matching
             root = self._get("/search/package", {"match": f"contains(@name,'{query}')"})
@@ -181,10 +227,8 @@ class OBSBackend:
         return None
 
     def _get_repo_file_name(self, project: str) -> str:
-        """生成 repo 文件名"""
-        # home:user1 -> obs_home_user1.repo
-        safe_name = project.replace(":", "_").replace("/", "_")
-        return f"obs_{safe_name}.repo"
+        """Generate repo file name (matches OBS download filename)"""
+        return f"{project}.repo"
 
     def find_fedora_repos(
         self,
@@ -214,10 +258,9 @@ class OBSBackend:
 
     def get_repo_file_url(self, project: str, repository: str) -> str:
         """Get repo file download link"""
-        safe_name = project.replace(':', '_')
         return (
             f"https://download.opensuse.org/repositories/"
-            f"{project}/{repository}/{safe_name}.repo"
+            f"{project}/{repository}/{project}.repo"
         )
 
     def download_repo_file(self, project: str, repository: str) -> bool:
@@ -242,8 +285,7 @@ class OBSBackend:
 
     def disable_repo(self, project: str) -> bool:
         """Disable OBS repo"""
-        repo_file_name = self._get_repo_file_name(project)
-        repo_id = repo_file_name.replace(".repo", "")
+        repo_id = project.replace(":", "_").replace("/", "_")
         try:
             result = subprocess.run(
                 [
@@ -259,12 +301,20 @@ class OBSBackend:
 
     def remove_repo_file(self, project: str) -> bool:
         """Delete OBS repo file"""
-        repo_file_name = self._get_repo_file_name(project)
-        repo_file_path = OBS_REPO_DIR / repo_file_name
+        # OBS repo files may use colons (home:user.repo) or underscores (home_user.repo)
+        # depending on how they were added. Try both formats.
+        paths = [
+            OBS_REPO_DIR / self._get_repo_file_name(project),
+        ]
+        # If project has underscores, also try with colons (original OBS naming)
+        if "_" in project:
+            alt_name = project.replace("_", ":")
+            paths.append(OBS_REPO_DIR / self._get_repo_file_name(alt_name))
 
         try:
+            # rm -f succeeds even if file doesn't exist
             result = subprocess.run(
-                ["sudo", "rm", "-f", str(repo_file_path)],
+                ["sudo", "rm", "-f"] + [str(p) for p in paths],
                 capture_output=True,
                 text=True,
             )

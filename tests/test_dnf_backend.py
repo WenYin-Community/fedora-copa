@@ -1,6 +1,6 @@
 """dnf_backend 模块测试"""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 from copa.dnf_backend import DnfBackend, Package, Repo
 
@@ -9,18 +9,28 @@ class TestDnfBackend:
     """测试 DnfBackend 类"""
 
     def test_init_dnf5(self):
-        """初始化使用 dnf5"""
-        backend = DnfBackend(use_dnf5=True)
+        """Init with dnf5"""
+        backend = DnfBackend(binary="dnf5")
         assert backend._binary == "dnf5"
 
     def test_init_dnf(self):
-        """初始化使用 dnf"""
-        backend = DnfBackend(use_dnf5=False)
+        """Init with dnf"""
+        backend = DnfBackend(binary="dnf")
         assert backend._binary == "dnf"
+
+    def test_repo_flag_dnf5(self):
+        """dnf5 uses --repo flag"""
+        backend = DnfBackend(binary="dnf5")
+        assert backend._repo_flag == "--repo"
+
+    def test_repo_flag_dnf(self):
+        """dnf uses --repoid flag"""
+        backend = DnfBackend(binary="dnf")
+        assert backend._repo_flag == "--repoid"
 
     @patch("subprocess.run")
     def test_run_command(self, mock_run):
-        """执行命令"""
+        """Run command with LANG=C and timeout"""
         mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
         backend = DnfBackend()
         backend._run(["repolist", "--enabled"])
@@ -28,18 +38,22 @@ class TestDnfBackend:
             ["dnf5", "repolist", "--enabled"],
             capture_output=True,
             text=True,
+            env=ANY,
+            timeout=60,
         )
 
     @patch("subprocess.run")
     def test_run_command_with_sudo(self, mock_run):
-        """执行 sudo 命令"""
+        """Run sudo command with LANG=C and timeout"""
         mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
         backend = DnfBackend()
         backend._run(["install", "htop"], sudo=True)
         mock_run.assert_called_once_with(
             ["sudo", "dnf5", "install", "htop"],
-            capture_output=True,
             text=True,
+            capture_output=False,
+            env=ANY,
+            timeout=60,
         )
 
     def test_parse_repolist(self):
@@ -56,7 +70,7 @@ copr:copr.fedorainfracloud.org:user:project                         Copr repo"""
         assert repos[2].id == "copr:copr.fedorainfracloud.org:user:project"
 
     def test_get_enabled_repos(self):
-        """获取已启用仓库分类"""
+        """Get enabled repos categorized"""
         backend = DnfBackend()
         # Mock repolist 方法
         backend.repolist = MagicMock(return_value=[
@@ -74,7 +88,7 @@ copr:copr.fedorainfracloud.org:user:project                         Copr repo"""
 
     @patch("subprocess.run")
     def test_copr_enable(self, mock_run):
-        """启用 Copr 仓库"""
+        """Enable Copr repo"""
         mock_run.return_value = MagicMock(returncode=0)
         backend = DnfBackend()
         result = backend.copr_enable("user/project", "fedora-43-x86_64")
@@ -82,7 +96,7 @@ copr:copr.fedorainfracloud.org:user:project                         Copr repo"""
 
     @patch("subprocess.run")
     def test_copr_disable(self, mock_run):
-        """禁用 Copr 仓库"""
+        """Disable Copr repo"""
         mock_run.return_value = MagicMock(returncode=0)
         backend = DnfBackend()
         result = backend.copr_disable("user/project")
@@ -90,11 +104,48 @@ copr:copr.fedorainfracloud.org:user:project                         Copr repo"""
 
     @patch("subprocess.run")
     def test_install_package(self, mock_run):
-        """安装包"""
+        """Install package without repo"""
         mock_run.return_value = MagicMock(returncode=0)
-        backend = DnfBackend()
+        backend = DnfBackend(binary="dnf5")
         result = backend.install("htop")
         assert result is True
+        mock_run.assert_called_once_with(
+            ["sudo", "dnf5", "install", "htop"],
+            text=True,
+            capture_output=False,
+            env=ANY,
+            timeout=None,
+        )
+
+    @patch("subprocess.run")
+    def test_install_package_with_repo_dnf5(self, mock_run):
+        """Install package with --repo flag for dnf5"""
+        mock_run.return_value = MagicMock(returncode=0)
+        backend = DnfBackend(binary="dnf5")
+        result = backend.install("htop", repo="myrepo")
+        assert result is True
+        mock_run.assert_called_once_with(
+            ["sudo", "dnf5", "install", "htop", "--repo", "myrepo"],
+            text=True,
+            capture_output=False,
+            env=ANY,
+            timeout=None,
+        )
+
+    @patch("subprocess.run")
+    def test_install_package_with_repo_dnf(self, mock_run):
+        """Install package with --repoid flag for dnf"""
+        mock_run.return_value = MagicMock(returncode=0)
+        backend = DnfBackend(binary="dnf")
+        result = backend.install("htop", repo="myrepo")
+        assert result is True
+        mock_run.assert_called_once_with(
+            ["sudo", "dnf", "install", "htop", "--repoid", "myrepo"],
+            text=True,
+            capture_output=False,
+            env=ANY,
+            timeout=None,
+        )
 
     @patch("subprocess.run")
     def test_makecache(self, mock_run):

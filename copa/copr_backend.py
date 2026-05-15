@@ -1,9 +1,12 @@
-"""Copr 后端 - 处理与 Copr API 和 copr-cli 的交互"""
+"""Copr backend - handles interaction with Copr API and copr-cli"""
 
 from dataclasses import dataclass
 
+import requests
 from copr.v3 import Client
 from copr.v3.exceptions import CoprNoResultException
+
+from copa.utils import retry
 
 
 @dataclass
@@ -45,6 +48,7 @@ class CoprBackend:
         else:
             self.client = Client.create_from_config_file()
 
+    @retry(max_attempts=3, delay=1.0, exceptions=(requests.ConnectionError, requests.Timeout, OSError))
     def search_projects(self, query: str, limit: int = 20) -> list[CoprProject]:
         """Search Copr projects"""
         try:
@@ -67,6 +71,7 @@ class CoprBackend:
         except Exception:
             return []
 
+    @retry(max_attempts=3, delay=1.0, exceptions=(requests.ConnectionError, requests.Timeout, OSError))
     def get_project(self, owner: str, name: str) -> CoprProject | None:
         """Get project details"""
         try:

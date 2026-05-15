@@ -165,15 +165,15 @@ class TestFilterCoprByKeywords:
         result = _filter_copr_by_keywords(results, ["python"])
         assert len(result) == 2
 
-    def test_match_description(self):
-        """匹配描述"""
+    def test_no_match_description(self):
+        """不匹配描述"""
         results = [
             MockCoprResult("user1", "myapp", "Fast terminal emulator"),
             MockCoprResult("user2", "other", "Terminal multiplexer"),
             MockCoprResult("user3", "tool", "File manager"),
         ]
         result = _filter_copr_by_keywords(results, ["terminal"])
-        assert len(result) == 2
+        assert len(result) == 0
 
 
 class TestFilterCoprByRegex:
