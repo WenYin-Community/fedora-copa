@@ -2,6 +2,7 @@
 
 PACKAGE = copa
 VERSION = $(shell grep '^Version:' rpm/copa.spec | awk '{print $$2}')
+URL = https://github.com/WenYin-Community/fedora-copa
 SPEC_FILE = rpm/copa.spec
 
 # Build targets
@@ -30,6 +31,8 @@ srpm: build-srpm
 build-srpm:
 	@echo "Building source RPM..."
 	@mkdir -p build/SRPMS
+	@curl -sSfL -o "$(PACKAGE)-$(VERSION).tar.gz" \
+		"$(URL)/archive/v$(VERSION)/$(PACKAGE)-$(VERSION).tar.gz" || true
 	@rpmbuild -bs $(SPEC_FILE) \
 		--define "_topdir $(CURDIR)/build" \
 		--define "_sourcedir $(CURDIR)"
