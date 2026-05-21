@@ -3,6 +3,7 @@ name: Publish to Copr
 on:
   release:
     types: [published]
+  workflow_dispatch:
 
 jobs:
   trigger-copr:
@@ -13,15 +14,12 @@ jobs:
         run: pip install copr-cli
 
       - name: Configure copr-cli credentials
+        env:
+          COPR_LOGIN: ${{ secrets.COPR_LOGIN }}
+          COPR_TOKEN: ${{ secrets.COPR_TOKEN }}
         run: |
           mkdir -p ~/.config
-          cat > ~/.config/copr <<EOF
-          [copr-cli]
-          login = ${{ secrets.COPR_LOGIN }}
-          username = ruojiner
-          token = ${{ secrets.COPR_TOKEN }}
-          copr_url = https://copr.fedorainfracloud.org
-          EOF
+          printf '[copr-cli]\nlogin = %s\nusername = ruojiner\ntoken = %s\ncopr_url = https://copr.fedorainfracloud.org\n' "$COPR_LOGIN" "$COPR_TOKEN" > ~/.config/copr
 
       - name: Trigger Copr build
         run: copr-cli build-package ruojiner/fedora-copa --name fedora-copa --nowait
