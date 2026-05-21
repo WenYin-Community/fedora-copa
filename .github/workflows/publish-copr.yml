@@ -10,6 +10,29 @@ jobs:
     name: Trigger Copr Build
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Wait for release tarball
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(grep '__version__' copa/__init__.py | sed 's/.*"\(.*\)"/\1/')
+          TARBALL="fedora-copa-${VERSION}.tar.gz"
+          REPO="${{ github.repository }}"
+          TAG="${{ github.event.release.tag_name }}"
+
+          echo "Waiting for asset '${TARBALL}' in release ${TAG}..."
+          for i in $(seq 1 60); do
+            if gh api "repos/${REPO}/releases/tags/${TAG}" --jq '.assets[].name' 2>/dev/null | grep -qx "${TARBALL}"; then
+              echo "Asset found."
+              exit 0
+            fi
+            echo "  Attempt ${i}/60 - not found yet, retrying in 10s..."
+            sleep 10
+          done
+          echo "Timed out waiting for asset '${TARBALL}'."
+          exit 1
+
       - name: Install copr-cli
         run: pip install copr-cli
 
