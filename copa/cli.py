@@ -2,7 +2,7 @@
 
 import argparse
 import sys
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, TimeoutError, as_completed
 from typing import TYPE_CHECKING, Any
 
 from copa import __app_name__, __version__
@@ -16,6 +16,22 @@ YELLOW = "\033[93m"
 GREEN = "\033[92m"
 BOLD = "\033[1m"
 RESET = "\033[0m"
+
+
+def _parse_owner_project(value: str) -> tuple[str, str] | None:
+    """Parse OWNER/PROJECT format safely."""
+    if "/" not in value:
+        return None
+    owner, project = value.split("/", 1)
+    if not owner or not project:
+        return None
+    return owner, project
+
+
+def _obs_project_exists_in_system(project: str, repo_ids: set[str]) -> bool:
+    """Check whether OBS project already exists in system repo ids."""
+    normalized = project.replace(":", "_").replace("/", "_")
+    return project in repo_ids or normalized in repo_ids
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -56,6 +72,18 @@ def create_parser() -> argparse.ArgumentParser:
     search_parser.add_argument(
         "--copr-only", action="store_true",
         help="Search Copr only"
+    )
+    search_parser.add_argument(
+        "--obs-only", action="store_true",
+        help="Search OBS only"
+    )
+    search_parser.add_argument(
+        "--no-obs", action="store_true",
+        help="Skip OBS search"
+    )
+    search_parser.add_argument(
+        "--include-local-repo", action="store_true",
+        help="Also search Fedora, RPM Fusion, Terra (default: Copr + OBS)"
     )
     search_parser.add_argument(
         "-x", "--regex", action="store_true",
@@ -236,6 +264,10 @@ def cmd_search(args: argparse.Namespace) -> int:
     search_query = " ".join(args.keyword)
     use_json = args.json if hasattr(args, 'json') else False
     use_regex = args.regex if hasattr(args, 'regex') else False
+    if args.obs_only and args.no_obs:
+        if not use_json:
+            print(f"{RED}Error: --obs-only cannot be used with --no-obs{RESET}")
+        return 1
 
     # Regex pattern validation
     regex_patterns = []
@@ -255,6 +287,7 @@ def cmd_search(args: argparse.Namespace) -> int:
 
     # Get enabled repos
     enabled_repos = dnf.get_enabled_repos()
+    search_local = args.include_local_repo or args.official_only or args.rpmfusion_only
 
     # Collect all results
     all_results: dict[str, Any] = {
@@ -264,6 +297,7 @@ def cmd_search(args: argparse.Namespace) -> int:
         "rpmfusion": [],
         "terra": [],
         "copr": [],
+        "obs": [],
     }
 
     if not use_json:
@@ -279,7 +313,7 @@ def cmd_search(args: argparse.Namespace) -> int:
             print(f"  Please verify the risks before installation.{RESET}\n")
 
     # Search Fedora official repos
-    if not args.copr_only:
+    if search_local and not args.copr_only and not args.rpmfusion_only and not args.obs_only:
         if not use_json:
             print("Searching Fedora official repos...")
         fedora_results = dnf.search_in_repos(search_query, enabled_repos["fedora"])
@@ -304,7 +338,13 @@ def cmd_search(args: argparse.Namespace) -> int:
             print()
 
     # Search RPM Fusion
-    if not args.official_only and not args.copr_only and enabled_repos["rpmfusion"]:
+    if (
+        search_local
+        and not args.official_only
+        and not args.copr_only
+        and not args.obs_only
+        and enabled_repos["rpmfusion"]
+    ):
         if not use_json:
             print("Searching RPM Fusion...")
         rpmfusion_results = dnf.search_in_repos(search_query, enabled_repos["rpmfusion"])
@@ -328,7 +368,14 @@ def cmd_search(args: argparse.Namespace) -> int:
             print()
 
     # Search Terra
-    if not args.official_only and not args.copr_only and enabled_repos["terra"]:
+    if (
+        args.include_local_repo
+        and not args.official_only
+        and not args.rpmfusion_only
+        and not args.copr_only
+        and not args.obs_only
+        and enabled_repos["terra"]
+    ):
         if not use_json:
             print("Searching Terra...")
         terra_results = dnf.search_in_repos(search_query, enabled_repos["terra"])
@@ -352,11 +399,12 @@ def cmd_search(args: argparse.Namespace) -> int:
             print()
 
     # Search Copr
-    if not args.official_only and not args.rpmfusion_only:
+    search_third_party = not args.official_only and not args.rpmfusion_only
+    fedora_version = dnf.get_fedora_version() if search_third_party else 0
+    if search_third_party and not args.obs_only:
         if not use_json:
             print("Searching Copr repos...")
         chroot = dnf.get_chroot()
-        fedora_version = dnf.get_fedora_version()
         copr_results = engine.search_copr(
             search_query, chroot, fedora_version,
         )
@@ -386,6 +434,36 @@ def cmd_search(args: argparse.Namespace) -> int:
                 print(f"        {result.project.description[:60]}...")
                 print(f"        Chroot: {chroot_status} | Risk: {result.risk_level}")
             print()
+
+    search_obs = args.obs_only or (
+        search_third_party
+        and not args.no_obs
+        and not args.copr_only
+    )
+    if search_obs:
+        if not engine.obs.is_available():
+            if args.obs_only and not use_json:
+                print(f"{YELLOW}OBS is unavailable, skipping.{RESET}")
+        else:
+            if not use_json:
+                print("Searching OBS repos...")
+            obs_results = engine.search_obs(search_query, fedora_version)
+            for obs_result in obs_results[:10]:
+                all_results["obs"].append({
+                    "project": obs_result.package.project,
+                    "name": obs_result.package.name,
+                    "description": obs_result.package.description[:100],
+                    "has_current_version": obs_result.has_current_version,
+                    "risk_level": obs_result.risk_level,
+                })
+            if not use_json and obs_results:
+                print(f"  Found {len(obs_results)} OBS packages:")
+                for i, obs_result in enumerate(obs_results[:10], 1):
+                    version_status = "✓" if obs_result.has_current_version else "⚠ fallback"
+                    print(f"    [{i}] {obs_result.package.project}/{obs_result.package.name}")
+                    print(f"        {obs_result.package.description[:60]}...")
+                    print(f"        Version: {version_status} | Risk: {obs_result.risk_level}")
+                print()
 
     # JSON output
     if use_json:
@@ -480,7 +558,7 @@ def cmd_install(args: argparse.Namespace) -> int:
         print("  (RPM Fusion, Terra, Copr, OBS) are built by third parties.")
         print(f"  Please verify the risks before installation.{RESET}\n")
 
-    # Dry-run 模式
+    # Dry-run mode
     if args.dry_run:
         print("[dry-run] Will execute:")
         print(f"  1. Search {package} in Copr/OBS")
@@ -566,7 +644,7 @@ def cmd_install(args: argparse.Namespace) -> int:
         chroot = dnf.get_chroot()
         all_sources: list[tuple[str, Any]] = []
 
-        # 并行搜索 Copr 和 OBS
+        # Search Copr and OBS in parallel
         search_copr = not args.obs_only
         search_obs = not args.no_obs and not args.copr_only
 
@@ -586,7 +664,7 @@ def cmd_install(args: argparse.Namespace) -> int:
                 for future in as_completed([future_copr, future_obs]):  # type: ignore[var-annotated, arg-type]
                     try:
                         results = future.result(timeout=60)
-                    except Exception:
+                    except TimeoutError:
                         results = []
                     if future is future_copr:
                         for r in results[:10]:
@@ -634,7 +712,11 @@ def cmd_install(args: argparse.Namespace) -> int:
 
             if args.copr:
                 # Use specified Copr
-                owner, project = args.copr.split("/", 1)
+                parsed_copr = _parse_owner_project(args.copr)
+                if not parsed_copr:
+                    print(f"\n{RED}Error: Invalid --copr format, expected OWNER/PROJECT{RESET}")
+                    return 1
+                owner, project = parsed_copr
                 selected = None
                 selected_source = None
                 for source, data in all_sources:
@@ -689,7 +771,7 @@ def _resolve_package_name(
         print(f"  No packages matching '{package}' found in repo")
         return None
 
-    # 去重
+    # Deduplicate
     seen: set[str] = set()
     unique: list[Package] = []
     for pkg in found:
@@ -737,7 +819,7 @@ def _install_from_copr(
     # Determine chroot to use
     use_chroot = selected.best_chroot or chroot
 
-    # 版本降级风险提示
+    # Version fallback risk warning
     if selected.version_gap > 0:
         fedora_version = dnf.get_fedora_version()
         target_version = fedora_version - selected.version_gap
@@ -763,7 +845,7 @@ def _install_from_copr(
         print("Refreshing cache...")
         dnf.makecache()
 
-        # 在 Copr 仓库内查找实际包名
+        # Search for actual package name in Copr repo
         print(f"Searching for '{package}' in {owner_project}...")
         install_name = _resolve_package_name(
             dnf, package, repo_id, args.assumeyes,
@@ -775,7 +857,7 @@ def _install_from_copr(
             print(f"  copa repo remove copr:{owner_project}")
             return 1
 
-        # 安装前确认
+        # Pre-install confirmation
         if not args.assumeyes:
             from copa.utils import confirm
             if not confirm(f"{BOLD}\nInstall {install_name}?{RESET}", default=True):
@@ -866,7 +948,7 @@ def _install_from_obs(
                 print("Refreshing cache...")
                 dnf.makecache()
 
-                # 在 OBS 仓库内查找实际包名
+                # Search for actual package name in OBS repo
                 obs_repo_id = selected.package.project.replace(":", "_").replace("/", "_")
                 print(f"Searching for '{package}' in {obs_repo_id}...")
                 install_name = _resolve_package_name(
@@ -879,7 +961,7 @@ def _install_from_obs(
                     print(f"  copa repo remove obs:{selected.package.project}")
                     return 1
 
-                # 安装前确认
+                # Pre-install confirmation
                 if not args.assumeyes:
                     from copa.utils import confirm
                     if not confirm(f"{BOLD}\nInstall {install_name}?{RESET}", default=True):
@@ -950,9 +1032,9 @@ def cmd_info(args: argparse.Namespace) -> int:
         "copr_projects": [],
     }
 
-    # Check if it is a owner/project 格式
+    # Check if it is owner/project format
     if "/" in package:
-        # Copr 项目详情
+        # Copr project details
         owner, project = package.split("/", 1)
         result_data["type"] = "copr_project"
         project_info = copr.get_project(owner, project)
@@ -978,7 +1060,7 @@ def cmd_info(args: argparse.Namespace) -> int:
                 print(f"  Project not found: {owner}/{project}")
             return 1
     else:
-        # 软件包详情
+        # Package details
         result_data["type"] = "package"
         if not use_json:
             print(f"Package: {package}\n")
@@ -1052,8 +1134,12 @@ def cmd_list(args: argparse.Namespace) -> int:
     }
 
     if args.packages:
-        # List specified Copr 项目的包
-        owner, project = args.packages.split("/", 1)
+        # List packages in specified Copr project
+        parsed_packages = _parse_owner_project(args.packages)
+        if not parsed_packages:
+            print(f"{RED}Error: Invalid format, expected OWNER/PROJECT{RESET}")
+            return 1
+        owner, project = parsed_packages
         if not use_json:
             print(f"Listing packages in {owner}/{project}:\n")
 
@@ -1072,11 +1158,11 @@ def cmd_list(args: argparse.Namespace) -> int:
             print("  No packages found or project does not exist")
             return 1
     else:
-        # List enabled Copr 和 OBS 仓库
+        # List enabled Copr and OBS repos
         if not use_json:
             print("Enabled third-party repos:\n")
 
-        # 从状态文件读取
+        # Read from state file
         for repo in state.copr_repos:
             status = "enabled" if repo.enabled_by_copa else "system"
             result_data["copr_repos"].append({
@@ -1179,7 +1265,8 @@ def cmd_repo(args: argparse.Namespace) -> int:
                 print(f"  obs:{repo.id} [{status}] [system]")
 
             for obs_repo in state.obs_repos:
-                if f"obs:{obs_repo.project}" not in {r.id for r in obs_all}:
+                obs_repo_ids = {r.id for r in obs_all}
+                if not _obs_project_exists_in_system(obs_repo.project, obs_repo_ids):
                     print(f"  obs:{obs_repo.project} [enabled] [copa]")
                     if obs_repo.fedora_version:
                         print(f"    Fedora: {obs_repo.fedora_version}")
@@ -1205,13 +1292,18 @@ def cmd_repo(args: argparse.Namespace) -> int:
 
     if args.repo_command == "enable":
         if repo_type == "copr":
+            parsed_repo = _parse_owner_project(repo_name)
+            if not parsed_repo:
+                print(f"{RED}Error: Invalid copr repo format, expected owner/project{RESET}")
+                return 1
+            owner, project = parsed_repo
             chroot = args.chroot or dnf.get_chroot()
             print(f"Enabling Copr repo: {repo_name}")
             if dnf.copr_enable(repo_name, chroot):
                 print("✓ Copr repo enabled")
                 state.add_copr_repo(
-                    owner=repo_name.split("/")[0],
-                    project=repo_name.split("/")[1],
+                    owner=owner,
+                    project=project,
                     repo_id=f"copr:{repo_name}",
                     chroot=chroot,
                     enabled_by_copa=True,
@@ -1262,10 +1354,14 @@ def cmd_repo(args: argparse.Namespace) -> int:
 
     elif args.repo_command == "remove":
         if repo_type == "copr":
+            parsed_repo = _parse_owner_project(repo_name)
+            if not parsed_repo:
+                print(f"{RED}Error: Invalid copr repo format, expected owner/project{RESET}")
+                return 1
+            owner, project = parsed_repo
             print(f"Removing Copr repo: {repo_name}")
             if dnf.copr_remove(repo_name):
                 print("✓ Copr repo removed")
-                owner, project = repo_name.split("/", 1)
                 state.remove_copr_repo(owner, project)
                 state.save()
             else:
@@ -1307,7 +1403,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         try:
             result = subprocess.run(["dnf5", "--version"], capture_output=True, text=True)
             dnf5_version = result.stdout.strip().split("\n")[0] if result.returncode == 0 else ""
-        except Exception:
+        except OSError:
             pass
     checks.append(("dnf5", dnf5_exists, dnf5_version))
 
@@ -1322,7 +1418,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         try:
             result = subprocess.run(["copr-cli", "--version"], capture_output=True, text=True)
             copr_cli_version = result.stdout.strip() if result.returncode == 0 else ""
-        except Exception:
+        except OSError:
             pass
     checks.append(("copr-cli", copr_cli_exists, copr_cli_version))
 
@@ -1331,7 +1427,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     try:
         import importlib.util
         copr_available = importlib.util.find_spec("copr.v3") is not None
-    except Exception:
+    except (ImportError, AttributeError, ValueError):
         pass
     checks.append(("python-copr", copr_available, ""))
 
@@ -1343,7 +1439,9 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         response = client.head("https://copr.fedorainfracloud.org")
         copr_network_ok = response.status_code < 500
         client.close()
-    except Exception:
+    except ImportError:
+        pass
+    except (OSError, httpx.HTTPError):
         pass
     checks.append(("Copr API", copr_network_ok, "copr.fedorainfracloud.org"))
 
@@ -1357,7 +1455,9 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             response = client.head("https://api.opensuse.org")
             obs_network_ok = response.status_code < 500
             client.close()
-        except Exception:
+        except ImportError:
+            pass
+        except (OSError, httpx.HTTPError):
             pass
     checks.append(("OBS auth", obs_auth_exists, "~/.config/osc/oscrc"))
     checks.append(("OBS API", obs_network_ok, "api.opensuse.org"))
@@ -1371,7 +1471,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             text=True
         )
         is_ostree = result.returncode == 0
-    except Exception:
+    except OSError:
         pass
     if is_ostree:
         checks.append(("rpm-ostree", True, "Atomic system detected, not supported yet"))
@@ -1424,7 +1524,7 @@ def cmd_audit(args: argparse.Namespace) -> int:
 
     issues = []
 
-    # 审计 Copr 仓库
+    # Audit Copr repos
     if state.copr_repos:
         print("Copr repos:")
         for repo in state.copr_repos:
@@ -1706,7 +1806,7 @@ def cmd_provides(args: argparse.Namespace) -> int:
     result = dnf._run(["provides", file_path])
 
     if result.returncode == 0 and result.stdout.strip():
-        # 解析输出
+        # Parse output
         for line in result.stdout.strip().split("\n"):
             if line.strip():
                 result_data["providers"].append(line.strip())
@@ -1727,19 +1827,19 @@ def cmd_provides(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """主入口"""
+    """Main entry point"""
     import signal
 
     from copa.config import Config
 
-    # Ctrl+C 中断处理
+    # Ctrl+C interrupt handler
     def signal_handler(sig, frame):
         print(f"\n{YELLOW}Interrupted by user{RESET}")
         sys.exit(130)
 
     signal.signal(signal.SIGINT, signal_handler)
 
-    # 加载配置文件
+    # Load config file
     config = Config.load()
 
     parser = create_parser()
@@ -1749,7 +1849,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.print_help()
         return 0
 
-    # 将配置传递给命令
+    # Pass config to command
     args.config = config
 
     commands = {

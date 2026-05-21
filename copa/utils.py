@@ -1,4 +1,4 @@
-"""工具函数"""
+"""Utility functions"""
 
 import shutil
 import subprocess
@@ -42,7 +42,7 @@ def retry(
 
 
 def check_command_exists(command: str) -> bool:
-    """检查命令是否存在"""
+    """Check if command exists"""
     return shutil.which(command) is not None
 
 
@@ -101,7 +101,7 @@ def run_command(
 
 
 def confirm(prompt: str, default: bool = False) -> bool:
-    """确认提示"""
+    """Confirmation prompt"""
     suffix = " [Y/n]: " if default else " [y/N]: "
     response = input(prompt + suffix).strip().lower()
 
@@ -121,7 +121,7 @@ def select_from_list(
         print(f"  [{i}] {option}")
 
     if allow_quit:
-        print("  [q] 取消")
+        print("  [q] Cancel")
 
     while True:
         response = input(prompt).strip().lower()
@@ -133,7 +133,7 @@ def select_from_list(
             choice = int(response)
             if 1 <= choice <= len(options):
                 return choice - 1
-            print(f"请输入 1-{len(options)} 之间的数字")
+            print(f"Enter a number between 1-{len(options)}")
         except ValueError:
             print("Enter a valid number or 'q' to cancel")
 
@@ -150,12 +150,12 @@ def format_size(size_bytes: int) -> str:
 
 def print_error(message: str) -> None:
     """Print error message"""
-    print(f"错误: {message}", file=sys.stderr)
+    print(f"Error: {message}", file=sys.stderr)
 
 
 def print_warning(message: str) -> None:
     """Print warning message"""
-    print(f"警告: {message}", file=sys.stderr)
+    print(f"Warning: {message}", file=sys.stderr)
 
 
 def print_info(message: str) -> None:

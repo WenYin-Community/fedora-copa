@@ -1,4 +1,4 @@
-"""config 模块测试"""
+"""config module tests"""
 
 
 import pytest
@@ -12,13 +12,13 @@ from copa.config import (
 
 @pytest.fixture
 def temp_config_file(tmp_path):
-    """创建临时配置文件"""
+    """Create temp config file"""
     return tmp_path / "config.toml"
 
 
 @pytest.fixture
 def sample_config():
-    """创建示例配置"""
+    """Create sample config"""
     config = Config()
     config.search.enable_fedora = True
     config.search.enable_rpmfusion = False
@@ -28,10 +28,10 @@ def sample_config():
 
 
 class TestSearchConfig:
-    """测试 SearchConfig"""
+    """Test SearchConfig"""
 
     def test_default_values(self):
-        """默认值"""
+        """Default values"""
         config = SearchConfig()
         assert config.enable_fedora is True
         assert config.enable_rpmfusion is True
@@ -46,26 +46,26 @@ class TestSearchConfig:
 
 
 class TestInstallConfig:
-    """测试 InstallConfig"""
+    """Test InstallConfig"""
 
     def test_default_values(self):
-        """默认值"""
+        """Default values"""
         config = InstallConfig()
         assert config.default_copr_post_action == "disable"
         assert config.strict_selected_repo is True
 
 
 class TestConfig:
-    """测试 Config"""
+    """Test Config"""
 
     def test_create_default_config(self):
-        """创建默认配置"""
+        """Create default config"""
         config = Config()
         assert config.search.enable_fedora is True
         assert config.install.default_copr_post_action == "disable"
 
     def test_save_and_load(self, temp_config_file, sample_config):
-        """保存和加载配置"""
+        """Save and load config"""
         sample_config.save(temp_config_file)
         loaded = Config.load(temp_config_file)
         assert loaded.search.enable_fedora is True
@@ -73,18 +73,18 @@ class TestConfig:
         assert loaded.install.default_copr_post_action == "disable"
 
     def test_load_nonexistent_file(self, temp_config_file):
-        """加载不存在的文件"""
+        """Load non-existent file"""
         config = Config.load(temp_config_file)
-        assert config.search.enable_fedora is True  # 默认值
+        assert config.search.enable_fedora is True  # Default value
 
     def test_load_invalid_file(self, temp_config_file):
-        """加载无效文件"""
+        """Load invalid file"""
         temp_config_file.write_text("invalid toml")
         config = Config.load(temp_config_file)
-        assert config.search.enable_fedora is True  # 默认值
+        assert config.search.enable_fedora is True  # Default value
 
     def test_generate_example(self, temp_config_file):
-        """生成示例配置"""
+        """Generate example config"""
         Config.generate_example(temp_config_file)
         assert temp_config_file.exists()
         content = temp_config_file.read_text()

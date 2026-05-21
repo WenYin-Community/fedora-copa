@@ -33,6 +33,9 @@ _copa() {
                         '--official-only[Search Fedora official repos only]' \
                         '--rpmfusion-only[Search RPM Fusion only]' \
                         '--copr-only[Search Copr only]' \
+                        '--obs-only[Search OBS only]' \
+                        '--no-obs[Skip OBS search]' \
+                        '--include-local-repo[Also search Fedora, RPM Fusion, Terra]' \
                         '--json[Output in JSON format]' \
                         '*:keyword:'
                     ;;
@@ -43,6 +46,7 @@ _copa() {
                         '--copr-only[Install from Copr only]' \
                         '--copr[Use specified Copr repo]:owner/project:' \
                         '--obs-only[Install from OBS only]' \
+                        '--include-local-repo[Also search Fedora, RPM Fusion, Terra]' \
                         '--no-obs[Skip OBS search]' \
                         '--allow-obs-fallback[Allow OBS version fallback]' \
                         '--keep-copr[Keep Copr repo after install]' \

@@ -1,4 +1,4 @@
-"""state 模块测试"""
+"""state module tests"""
 
 
 import pytest
@@ -8,13 +8,13 @@ from copa.state import AppState
 
 @pytest.fixture
 def temp_state_file(tmp_path):
-    """创建临时状态文件"""
+    """Create temp state file"""
     return tmp_path / "state.json"
 
 
 @pytest.fixture
 def sample_state():
-    """创建示例状态"""
+    """Create sample state"""
     state = AppState()
     state.add_copr_repo(
         owner="testuser",
@@ -32,16 +32,16 @@ def sample_state():
 
 
 class TestAppState:
-    """测试 AppState 类"""
+    """Test AppState class"""
 
     def test_create_empty_state(self):
-        """创建空状态"""
+        """Create empty state"""
         state = AppState()
         assert len(state.copr_repos) == 0
         assert len(state.obs_repos) == 0
 
     def test_add_copr_repo(self):
-        """添加 Copr 仓库"""
+        """Add Copr repo"""
         state = AppState()
         state.add_copr_repo(
             owner="testuser",
@@ -55,7 +55,7 @@ class TestAppState:
         assert state.copr_repos[0].enabled_by_copa is True
 
     def test_add_obs_repo(self):
-        """添加 OBS 仓库"""
+        """Add OBS repo"""
         state = AppState()
         state.add_obs_repo(
             project="home:user1",
@@ -68,7 +68,7 @@ class TestAppState:
         assert state.obs_repos[0].enabled_by_copa is True
 
     def test_get_copr_repo(self):
-        """获取 Copr 仓库"""
+        """Get Copr repo"""
         state = AppState()
         state.add_copr_repo(
             owner="testuser",
@@ -81,7 +81,7 @@ class TestAppState:
         assert repo.owner == "testuser"
 
     def test_get_copr_repo_not_found(self):
-        """获取不存在的 Copr 仓库"""
+        """Get non-existent Copr repo"""
         state = AppState()
         repo = state.get_copr_repo("nonexistent", "project")
         assert repo is None
@@ -130,7 +130,7 @@ class TestAppState:
         assert state.was_enabled_by_copa("testuser", "testproject") is False
 
     def test_save_and_load(self, temp_state_file, sample_state):
-        """保存和加载状态"""
+        """Save and load state"""
         sample_state.save(temp_state_file)
         loaded = AppState.load(temp_state_file)
         assert len(loaded.copr_repos) == 1
@@ -139,13 +139,13 @@ class TestAppState:
         assert loaded.obs_repos[0].project == "home:user1"
 
     def test_load_nonexistent_file(self, temp_state_file):
-        """加载不存在的文件"""
+        """Load non-existent file"""
         state = AppState.load(temp_state_file)
         assert len(state.copr_repos) == 0
         assert len(state.obs_repos) == 0
 
     def test_load_invalid_json(self, temp_state_file):
-        """加载无效 JSON"""
+        """Load invalid JSON"""
         temp_state_file.write_text("invalid json")
         state = AppState.load(temp_state_file)
         assert len(state.copr_repos) == 0

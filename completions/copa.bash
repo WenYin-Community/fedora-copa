@@ -13,11 +13,11 @@ _copa() {
 
     case ${prev} in
         search)
-            COMPREPLY=( $(compgen -W "--official-only --rpmfusion-only --copr-only --json" -- ${cur}) )
+            COMPREPLY=( $(compgen -W "--official-only --rpmfusion-only --copr-only --obs-only --no-obs --include-local-repo --json" -- ${cur}) )
             return 0
             ;;
         install)
-            COMPREPLY=( $(compgen -W "--official-only --rpmfusion-only --copr-only --copr --obs-only --no-obs --allow-obs-fallback --keep-copr --dry-run -y --assumeyes --json" -- ${cur}) )
+            COMPREPLY=( $(compgen -W "--official-only --rpmfusion-only --copr-only --copr --obs-only --include-local-repo --no-obs --allow-obs-fallback --keep-copr --dry-run -y --assumeyes --json" -- ${cur}) )
             return 0
             ;;
         repo)

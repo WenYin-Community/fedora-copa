@@ -1,5 +1,5 @@
 Name:           fedora-copa
-Version:        0.5.0
+Version:        0.8.0
 Release:        1%{?dist}
 Summary:        DNF5-style Fedora Copr Package Assistant
 
@@ -74,6 +74,9 @@ install -Dm644 completions/_copa %{buildroot}%{zsh_completions_dir}/_copa
 %config(noreplace) %{_sysconfdir}/copa/config.toml
 
 %changelog
+* Wed May 21 2025 copa contributors <copa@example.com> - 0.8.0-1
+- Version bump to 0.8.0
+
 * Thu May 15 2025 copa contributors <copa@example.com> - 0.5.0-1
 - OBS authentication support (reads ~/.config/osc/oscrc)
 - Fix Copr repo ID format (colon-separated)

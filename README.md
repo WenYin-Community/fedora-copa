@@ -113,11 +113,14 @@ copa doctor
 ### Search packages
 
 ```bash
-# Single keyword
+# Default: search Copr + OBS (when OBS is available)
 copa search ghostty
 
 # Multiple keywords (AND logic)
 copa search ghostty terminal
+
+# Also search Fedora, RPM Fusion, Terra
+copa search --include-local-repo ghostty
 
 # Regex search (match package names only)
 copa search -x "^ghost"
@@ -259,6 +262,9 @@ copa --json provides /usr/bin/vim
 | Option | Description |
 |--------|-------------|
 | `keyword [keyword ...]` | Search keywords (AND logic) |
+| `--obs-only` | Search OBS only |
+| `--no-obs` | Skip OBS search |
+| `--include-local-repo` | Also search Fedora, RPM Fusion, Terra (default: Copr + OBS) |
 | `--official-only` | Search Fedora official repos only |
 | `--rpmfusion-only` | Search RPM Fusion only |
 | `--copr-only` | Search Copr only |

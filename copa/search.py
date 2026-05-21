@@ -9,7 +9,7 @@ from copa.obs_backend import OBSBackend, OBSPackage, OBSRepo
 
 
 class Source(Enum):
-    """包来源"""
+    """Package source"""
     FEDORA = "fedora"
     RPMFUSION = "rpmfusion"
     TERRA = "terra"
@@ -27,18 +27,18 @@ class SearchResult:
 
 @dataclass
 class CoprSearchResult:
-    """Copr 搜索结果"""
+    """Copr search result"""
     project: CoprProject
     risk_level: str  # low, medium, high, blocked
     supports_chroot: bool
     has_package: bool
-    best_chroot: str | None = None  # 最佳匹配的 chroot（含 fallback）
-    version_gap: int = 0  # 版本差距，0 = 精确匹配
+    best_chroot: str | None = None  # Best matching chroot (with fallback)
+    version_gap: int = 0  # Version gap, 0 = exact match
 
 
 @dataclass
 class OBSSearchResult:
-    """OBS 搜索结果"""
+    """OBS search result"""
     package: OBSPackage
     repos: list[OBSRepo]
     has_current_version: bool
@@ -59,20 +59,24 @@ class SearchEngine:
         self.copr = copr
         self.obs = obs or OBSBackend()
 
+    def _search_dnf_group(self, keyword: str, group: str, source: Source) -> list[SearchResult]:
+        repo_ids = self.dnf.get_enabled_repos().get(group, [])
+        return [
+            SearchResult(package=package, source=source, repo=package.repo)
+            for package in self.dnf.search_in_repos(keyword, repo_ids)
+        ]
+
     def search_fedora(self, keyword: str) -> list[SearchResult]:
-        """搜索 Fedora 官方源"""
-        # TODO: 实现
-        return []
+        """Search Fedora official repos"""
+        return self._search_dnf_group(keyword, "fedora", Source.FEDORA)
 
     def search_rpmfusion(self, keyword: str) -> list[SearchResult]:
-        """搜索 RPM Fusion"""
-        # TODO: 实现
-        return []
+        """Search RPM Fusion"""
+        return self._search_dnf_group(keyword, "rpmfusion", Source.RPMFUSION)
 
     def search_terra(self, keyword: str) -> list[SearchResult]:
-        """搜索 Terra 仓库"""
-        # TODO: 实现
-        return []
+        """Search Terra repos"""
+        return self._search_dnf_group(keyword, "terra", Source.TERRA)
 
     def _find_best_copr_chroot(
         self,
@@ -81,16 +85,16 @@ class SearchEngine:
         current_fedora_version: int,
         max_fallback: int = 2,
     ) -> tuple[str | None, int]:
-        """从 chroot 列表中找最佳匹配，支持版本降级
+        """Find best matching chroot from list, with version fallback
 
         Returns:
-            (best_chroot, version_gap) - 找不到返回 (None, -1)
+            (best_chroot, version_gap) - returns (None, -1) if not found
         """
-        # 精确匹配
+        # Exact match
         if current_chroot in chroots:
             return current_chroot, 0
 
-        # 尝试降级匹配
+        # Try fallback match
         best = None
         best_gap = -1
         for c in chroots:
@@ -115,10 +119,10 @@ class SearchEngine:
         current_fedora_version: int = 0,
         max_fallback: int = 2,
     ) -> list[CoprSearchResult]:
-        """搜索 Copr 仓库 - 子字符串匹配项目名或 owner"""
+        """Search Copr repos - substring match on project name or owner"""
         projects = self.copr.search_projects(keyword)
         results = []
-        # 支持多关键词 AND 逻辑
+        # Support multi-keyword AND logic
         keywords = keyword.lower().split()
 
         for project in projects:
@@ -135,7 +139,7 @@ class SearchEngine:
             if not name_match and not owner_match:
                 continue
 
-            # 查找最佳 chroot（含 fallback）
+            # Find best chroot (with fallback)
             best_chroot, version_gap = self._find_best_copr_chroot(
                 project.chroots, chroot, current_fedora_version, max_fallback,
             )
@@ -159,11 +163,11 @@ class SearchEngine:
         supports_chroot: bool,
         version_gap: int = 0,
     ) -> str:
-        """评估 Copr 风险等级"""
+        """Assess Copr risk level"""
         desc_lower = project.description.lower()
         instructions_lower = project.instructions.lower()
 
-        # 高风险词
+        # High-risk words
         high_risk_words = ["do not use", "mock only", "testing only", "experimental"]
         for word in high_risk_words:
             if word in desc_lower or word in instructions_lower:
@@ -181,7 +185,7 @@ class SearchEngine:
         if version_gap == 1:
             return "medium"
 
-        # 中等风险词
+        # Medium-risk words
         medium_risk_words = ["testing", "experimental", "beta", "unstable"]
         for word in medium_risk_words:
             if word in desc_lower:
@@ -195,13 +199,13 @@ class SearchEngine:
         current_fedora_version: int,
         max_fallback: int = 2,
     ) -> list[OBSSearchResult]:
-        """搜索 OBS 仓库 - 子字符串匹配包名或项目名"""
+        """Search OBS repos - substring match on package name or project name"""
         packages = self.obs.search_packages(keyword)
         results = []
         keyword_lower = keyword.lower()
 
         for package in packages:
-            # 过滤：包名或项目名必须包含关键词
+            # Filter: package name or project name must contain keyword
             name_match = keyword_lower in package.name.lower()
             project_match = keyword_lower in package.project.lower()
 
@@ -236,7 +240,7 @@ class SearchEngine:
         has_current_version: bool,
         best_repo: OBSRepo | None,
     ) -> str:
-        """评估 OBS 风险等级"""
+        """Assess OBS risk level"""
         if has_current_version:
             return "low"
 
@@ -257,6 +261,7 @@ class SearchEngine:
         copr_only: bool = False,
         obs_only: bool = False,
         no_obs: bool = False,
+        include_local_repo: bool = False,
         max_obs_fallback: int = 2,
     ) -> tuple[list[SearchResult], list[CoprSearchResult], list[OBSSearchResult]]:
         """Search all sources"""
@@ -270,11 +275,13 @@ class SearchEngine:
             obs_results = self.search_obs(keyword, current_fedora_version, max_obs_fallback)
             return [], [], obs_results
 
-        if not copr_only:
+        search_local = include_local_repo or official_only or rpmfusion_only
+        if search_local and not copr_only and not rpmfusion_only:
             fedora_results = self.search_fedora(keyword)
-            if not official_only:
-                rpmfusion_results = self.search_rpmfusion(keyword)
-                terra_results = self.search_terra(keyword)
+        if search_local and not official_only and not copr_only:
+            rpmfusion_results = self.search_rpmfusion(keyword)
+        if include_local_repo and not official_only and not rpmfusion_only and not copr_only:
+            terra_results = self.search_terra(keyword)
 
         if not official_only and not rpmfusion_only:
             chroot = self.dnf.get_chroot()

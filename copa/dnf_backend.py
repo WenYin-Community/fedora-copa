@@ -137,7 +137,7 @@ class DnfBackend:
         repos = []
         lines = output.strip().split("\n")
 
-        # 跳过标题行
+        # Skip header line
         for line in lines[1:]:
             # Multiple spaces as separator
             # Format: repo_id<spaces>repo_name
@@ -270,7 +270,7 @@ class DnfBackend:
                 version = version_match.group(1)
             else:
                 version = "rawhide"
-        except Exception:
+        except OSError:
             version = "rawhide"
 
         # Get architecture
@@ -287,6 +287,6 @@ class DnfBackend:
             version_match = re.search(r'VERSION_ID="?(\d+)"?', content)
             if version_match:
                 return int(version_match.group(1))
-        except Exception:
+        except OSError:
             pass
         return 0

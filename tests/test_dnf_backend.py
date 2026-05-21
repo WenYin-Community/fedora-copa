@@ -1,4 +1,4 @@
-"""dnf_backend 模块测试"""
+"""dnf_backend module tests"""
 
 from unittest.mock import ANY, MagicMock, patch
 
@@ -6,7 +6,7 @@ from copa.dnf_backend import DnfBackend, Package, Repo
 
 
 class TestDnfBackend:
-    """测试 DnfBackend 类"""
+    """Test DnfBackend class"""
 
     def test_init_dnf5(self):
         """Init with dnf5"""
@@ -76,7 +76,7 @@ copr:copr.fedorainfracloud.org:user:project                         Copr repo"""
     def test_get_enabled_repos(self, mock_binary):
         """Get enabled repos categorized"""
         backend = DnfBackend()
-        # Mock repolist 方法
+        # Mock repolist method
         backend.repolist = MagicMock(return_value=[
             Repo(id="fedora", name="Fedora", enabled=True),
             Repo(id="updates", name="Updates", enabled=True),
@@ -164,10 +164,10 @@ copr:copr.fedorainfracloud.org:user:project                         Copr repo"""
 
 
 class TestPackage:
-    """测试 Package 数据类"""
+    """Test Package dataclass"""
 
     def test_create_package(self):
-        """创建包对象"""
+        """Create package object"""
         pkg = Package(
             name="htop",
             version="3.2.2",
@@ -183,10 +183,10 @@ class TestPackage:
 
 
 class TestRepo:
-    """测试 Repo 数据类"""
+    """Test Repo dataclass"""
 
     def test_create_repo(self):
-        """创建仓库对象"""
+        """Create repo object"""
         repo = Repo(id="fedora", name="Fedora 44", enabled=True)
         assert repo.id == "fedora"
         assert repo.name == "Fedora 44"

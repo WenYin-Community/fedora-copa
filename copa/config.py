@@ -113,7 +113,7 @@ class Config:
                 config.risk = RiskConfig(**data["risk"])
 
             return config
-        except Exception:
+        except (OSError, tomllib.TOMLDecodeError, TypeError):
             return cls()
 
     def save(self, path: Path | None = None) -> None:

@@ -1,4 +1,4 @@
-"""copa - DNF5 风格的 Fedora Copr 软件包助手"""
+"""copa - DNF5-style Fedora Copr package assistant"""
 
-__version__ = "0.5.0"
+__version__ = "0.8.0"
 __app_name__ = "copa"

@@ -1,5 +1,6 @@
 """OBS backend - handles interaction with openSUSE Build Service"""
 
+import configparser
 import re
 import subprocess
 import xml.etree.ElementTree as ET
@@ -12,9 +13,22 @@ OBS_API_BASE = "https://api.opensuse.org"
 OBS_REPO_DIR = Path("/etc/yum.repos.d")
 
 
+def _xpath_string_literal(value: str) -> str:
+    """Build safe XPath string literal for values containing quotes."""
+    if "'" not in value:
+        return f"'{value}'"
+    parts = value.split("'")
+    quoted_parts: list[str] = []
+    for i, part in enumerate(parts):
+        quoted_parts.append(f"'{part}'")
+        if i < len(parts) - 1:
+            quoted_parts.append('"\'"')
+    return f"concat({', '.join(quoted_parts)})"
+
+
 @dataclass
 class OBSProject:
-    """OBS 项目信息"""
+    """OBS project info"""
     name: str
     title: str
     description: str
@@ -22,7 +36,7 @@ class OBSProject:
 
 @dataclass
 class OBSPackage:
-    """OBS 包信息"""
+    """OBS package info"""
     name: str
     project: str
     title: str
@@ -31,7 +45,7 @@ class OBSPackage:
 
 @dataclass
 class OBSBinary:
-    """OBS 二进制包信息"""
+    """OBS binary package info"""
     name: str
     project: str
     repository: str
@@ -44,18 +58,18 @@ class OBSBinary:
 
 @dataclass
 class OBSRepo:
-    """OBS 仓库信息"""
+    """OBS repo info"""
     project: str
     repository: str
     repo_url: str
     fedora_version: str | None
     is_current_version: bool
     version_gap: int  # Gap with current version
-    repo_file_name: str = ""  # 本地 repo 文件名
+    repo_file_name: str = ""  # Local repo file name
 
 
 class OBSBackend:
-    """OBS 后端封装"""
+    """OBS backend wrapper"""
 
     def __init__(self, api_base: str = OBS_API_BASE):
         self.api_base = api_base
@@ -74,7 +88,6 @@ class OBSBackend:
         if not oscrc.exists():
             return None
         try:
-            import configparser
             cfg = configparser.ConfigParser()
             cfg.read(oscrc)
             for section in cfg.sections():
@@ -83,7 +96,7 @@ class OBSBackend:
                     passwd = cfg.get(section, "pass", fallback=None)
                     if user and passwd:
                         return httpx.BasicAuth(user, passwd)
-        except Exception:
+        except (OSError, configparser.Error):
             pass
         return None
 
@@ -102,7 +115,7 @@ class OBSBackend:
         try:
             resp = self.client.head(f"{self.api_base}/", timeout=10.0, follow_redirects=True)
             self._available = resp.status_code < 500
-        except Exception:
+        except httpx.HTTPError:
             self._available = False
         return self._available
 
@@ -120,7 +133,8 @@ class OBSBackend:
         if not self.is_available():
             return []
         try:
-            root = self._get("/search/project", {"match": f"contains(@name,'{query}')"})
+            query_literal = _xpath_string_literal(query)
+            root = self._get("/search/project", {"match": f"contains(@name,{query_literal})"})
             projects = []
             for project_elem in root.findall(".//project")[:limit]:
                 name = project_elem.get("name", "")
@@ -132,7 +146,7 @@ class OBSBackend:
                     description=description,
                 ))
             return projects
-        except Exception:
+        except (httpx.HTTPError, ET.ParseError):
             return []
 
     def search_packages(self, query: str, limit: int = 20) -> list[OBSPackage]:
@@ -141,7 +155,8 @@ class OBSBackend:
             return []
         try:
             # Use contains() for substring matching
-            root = self._get("/search/package", {"match": f"contains(@name,'{query}')"})
+            query_literal = _xpath_string_literal(query)
+            root = self._get("/search/package", {"match": f"contains(@name,{query_literal})"})
             packages = []
             for pkg_elem in root.findall(".//package")[:limit]:
                 name = pkg_elem.get("name", "")
@@ -155,7 +170,7 @@ class OBSBackend:
                     description=description,
                 ))
             return packages
-        except Exception:
+        except (httpx.HTTPError, ET.ParseError):
             return []
 
     def search_binaries(
@@ -165,9 +180,11 @@ class OBSBackend:
         limit: int = 20,
     ) -> list[OBSBinary]:
         """Search binary packages"""
-        match_parts = [f"name='{package_name}'"]
+        package_literal = _xpath_string_literal(package_name)
+        match_parts = [f"name={package_literal}"]
         if repository:
-            match_parts.append(f"repository='{repository}'")
+            repo_literal = _xpath_string_literal(repository)
+            match_parts.append(f"repository={repo_literal}")
 
         match = "+and+".join(match_parts)
         try:
@@ -185,7 +202,7 @@ class OBSBackend:
                     url=binary_elem.get("url", ""),
                 ))
             return binaries
-        except Exception:
+        except (httpx.HTTPError, ET.ParseError):
             return []
 
     def get_project_repos(self, project: str) -> list[OBSRepo]:
@@ -205,17 +222,17 @@ class OBSBackend:
                     repository=repo_name,
                     repo_url=repo_url,
                     fedora_version=fedora_version,
-                    is_current_version=False,  # 需要外部判断
-                    version_gap=0,  # 需要外部计算
+                    is_current_version=False,  # Needs external determination
+                    version_gap=0,  # Needs external calculation
                     repo_file_name=repo_file_name,
                 ))
             return repos
-        except Exception:
+        except (httpx.HTTPError, ET.ParseError):
             return []
 
     def _extract_fedora_version(self, repo_name: str) -> str | None:
         """Extract Fedora version from repo name"""
-        # 常见格式: Fedora_43, Fedora_43_x86_64, fedora-43-x86_64
+        # Common formats: Fedora_43, Fedora_43_x86_64, fedora-43-x86_64
         patterns = [
             r"[Ff]edora[_-](\d+)",
             r"[Ff]c(\d+)",
@@ -280,7 +297,7 @@ class OBSBackend:
                 text=True,
             )
             return result.returncode == 0
-        except Exception:
+        except OSError:
             return False
 
     def disable_repo(self, project: str) -> bool:
@@ -296,7 +313,7 @@ class OBSBackend:
                 text=True,
             )
             return result.returncode == 0
-        except Exception:
+        except OSError:
             return False
 
     def remove_repo_file(self, project: str) -> bool:
@@ -319,11 +336,11 @@ class OBSBackend:
                 text=True,
             )
             return result.returncode == 0
-        except Exception:
+        except OSError:
             return False
 
     def close(self) -> None:
-        """关闭客户端"""
+        """Close client"""
         self.client.close()
 
     def __enter__(self) -> "OBSBackend":

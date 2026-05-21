@@ -32,7 +32,7 @@ Output in JSON format.
 Show help message and exit.
 .SH COMMANDS
 .SS search
-Search packages from enabled repositories.
+Search Copr and OBS by default. OBS is searched only when available. Add \-\-include\-local\-repo to also search Fedora, RPM Fusion, and Terra.
 .PP
 .RS
 .B copa search
@@ -40,6 +40,9 @@ Search packages from enabled repositories.
 .RE
 .PP
 Options:
+.TP
+.B \-\-include\-local\-repo
+Also search Fedora, RPM Fusion, and Terra.
 .TP
 .B \-\-official\-only
 Search Fedora official repos only.
@@ -49,6 +52,12 @@ Search RPM Fusion only.
 .TP
 .B \-\-copr\-only
 Search Copr only.
+.TP
+.B \-\-obs\-only
+Search OBS only.
+.TP
+.B \-\-no\-obs
+Skip OBS search.
 .PP
 Multiple keywords use AND logic (all words must match).
 .SS install
@@ -146,7 +155,10 @@ Audit enabled repos for issues.
 .SH EXAMPLES
 .TP
 .B copa search ghostty
-Search for ghostty in all enabled repos.
+Search for ghostty in Copr and OBS.
+.TP
+.B copa search \-\-include\-local\-repo ghostty
+Search for ghostty in Copr, OBS, and local repos.
 .TP
 .B copa search ghostty terminal
 Search for packages matching both "ghostty" and "terminal".

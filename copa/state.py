@@ -62,7 +62,7 @@ class AppState:
                 state.obs_repos.append(OBSState(**repo_data))
 
             return state
-        except Exception:
+        except (OSError, json.JSONDecodeError, TypeError, AttributeError):
             return cls()
 
     def save(self, path: Path | None = None) -> None:

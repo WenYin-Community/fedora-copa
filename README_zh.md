@@ -113,11 +113,14 @@ copa doctor
 ### 搜索软件包
 
 ```bash
-# 单关键词
+# 默认搜索 Copr + OBS（OBS 可用时）
 copa search ghostty
 
 # 多关键词（AND 逻辑）
 copa search ghostty terminal
+
+# 同时搜索 Fedora、RPM Fusion、Terra
+copa search --include-local-repo ghostty
 
 # 正则搜索（仅匹配包名）
 copa search -x "^ghost"
@@ -259,6 +262,9 @@ copa --json provides /usr/bin/vim
 | 选项 | 说明 |
 |------|------|
 | `keyword [keyword ...]` | 搜索关键词（AND 逻辑） |
+| `--obs-only` | 只搜索 OBS |
+| `--no-obs` | 跳过 OBS 搜索 |
+| `--include-local-repo` | 同时搜索 Fedora、RPM Fusion、Terra（默认只搜 Copr + OBS） |
 | `--official-only` | 只搜索 Fedora 官方源 |
 | `--rpmfusion-only` | 只搜索 RPM Fusion |
 | `--copr-only` | 只搜索 Copr |

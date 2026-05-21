@@ -4,14 +4,14 @@ from dataclasses import dataclass
 
 import requests
 from copr.v3 import Client
-from copr.v3.exceptions import CoprNoResultException
+from copr.v3.exceptions import CoprException, CoprNoResultException
 
 from copa.utils import retry
 
 
 @dataclass
 class CoprProject:
-    """Copr 项目信息"""
+    """Copr project info"""
     owner: str
     name: str
     description: str
@@ -21,7 +21,7 @@ class CoprProject:
 
 @dataclass
 class CoprPackage:
-    """Copr 包信息"""
+    """Copr package info"""
     name: str
     source_name: str
     latest_version: str | None
@@ -30,7 +30,7 @@ class CoprPackage:
 
 @dataclass
 class CoprBuild:
-    """Copr 构建信息"""
+    """Copr build info"""
     id: int
     state: str
     chroot: str
@@ -39,14 +39,10 @@ class CoprBuild:
 
 
 class CoprBackend:
-    """Copr 后端封装"""
+    """Copr backend wrapper"""
 
-    def __init__(self, config_path: str | None = None):
-        if config_path:
-            # TODO: 从指定配置文件加载
-            self.client = Client.create_from_config_file()
-        else:
-            self.client = Client.create_from_config_file()
+    def __init__(self):
+        self.client = Client.create_from_config_file()
 
     @retry(max_attempts=3, delay=1.0,
            exceptions=(requests.ConnectionError, requests.Timeout, OSError))
@@ -69,7 +65,7 @@ class CoprBackend:
                     instructions=project.instructions or "",
                 ))
             return result
-        except Exception:
+        except CoprException:
             return []
 
     @retry(max_attempts=3, delay=1.0,
@@ -101,12 +97,12 @@ class CoprBackend:
             for pkg in packages:
                 result.append(CoprPackage(
                     name=pkg.name,
-                    source_name=pkg.name,  # 通常是源码包名
-                    latest_version=None,  # 需要额外查询
-                    latest_build_succeeded=False,  # 需要额外查询
+                    source_name=pkg.name,  # Usually the source package name
+                    latest_version=None,  # Requires additional query
+                    latest_build_succeeded=False,  # Requires additional query
                 ))
             return result
-        except Exception:
+        except CoprException:
             return []
 
     def get_builds(
@@ -146,7 +142,7 @@ class CoprBackend:
                     ),
                 ))
             return result
-        except Exception:
+        except CoprException:
             return []
 
     def check_package_exists(
@@ -161,5 +157,5 @@ class CoprBackend:
             return True
         except CoprNoResultException:
             return False
-        except Exception:
+        except CoprException:
             return False
