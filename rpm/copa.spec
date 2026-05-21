@@ -14,6 +14,8 @@ BuildRequires:  python3-pip
 BuildRequires:  python3-setuptools
 BuildRequires:  python3-wheel
 BuildRequires:  python3-pytest
+BuildRequires:  python3-copr
+BuildRequires:  python3-httpx
 
 Requires:       python3 >= 3.11
 Requires:       python3-copr
