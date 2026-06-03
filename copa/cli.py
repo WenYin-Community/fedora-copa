@@ -707,7 +707,10 @@ def cmd_install(args: argparse.Namespace) -> int:
 
                 # User selection
                 if args.assumeyes and not args.copr:
-                    print(f"\n{RED}Error: --copr OWNER/PROJECT required in non-interactive mode{RESET}")
+                    print(
+                        f"\n{RED}Error: --copr OWNER/PROJECT required"
+                        f" in non-interactive mode{RESET}"
+                    )
                     return 1
 
                 if args.copr:
@@ -752,7 +755,9 @@ def cmd_install(args: argparse.Namespace) -> int:
                 if selected_source == "copr":
                     return _install_from_copr(args, dnf, state, engine, package, selected, chroot)
                 else:
-                    return _install_from_obs(args, dnf, obs, state, package, selected, fedora_version)
+                    return _install_from_obs(
+                        args, dnf, obs, state, package, selected, fedora_version
+                    )
 
         print(f"\nPackage {package} not found")
         return 1
