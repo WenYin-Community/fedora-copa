@@ -73,50 +73,39 @@ class DnfBackend:
 
         return self._parse_repoquery(result.stdout)
 
+    @staticmethod
+    def _build_package(fields: dict[str, str]) -> Package:
+        """Build Package from parsed repoquery fields."""
+        epoch = fields.get("Epoch", "0")
+        version = fields.get("Version", "")
+        release = fields.get("Release", "")
+        return Package(
+            name=fields.get("Name", ""),
+            version=version,
+            release=release,
+            arch=fields.get("Architecture", ""),
+            summary=fields.get("Summary", ""),
+            repo=fields.get("Repo", ""),
+            evr=f"{epoch}:{version}-{release}",
+        )
+
     def _parse_repoquery(self, output: str) -> list[Package]:
         """Parse repoquery output"""
         packages: list[Package] = []
         current: dict[str, str] = {}
 
-        for line in output.split("\n"):
+        # Trailing newline ensures the last entry is flushed
+        for line in (output + "\n").split("\n"):
             line = line.strip()
             if not line:
                 if current:
-                    epoch = current.get("Epoch", "0")
-                    version = current.get("Version", "")
-                    release = current.get("Release", "")
-                    evr = f"{epoch}:{version}-{release}"
-                    packages.append(Package(
-                        name=current.get("Name", ""),
-                        version=version,
-                        release=release,
-                        arch=current.get("Architecture", ""),
-                        summary=current.get("Summary", ""),
-                        repo=current.get("Repo", ""),
-                        evr=evr,
-                    ))
+                    packages.append(self._build_package(current))
                     current = {}
                 continue
 
             if ":" in line:
                 key, _, value = line.partition(":")
                 current[key.strip()] = value.strip()
-
-        # Handle last package
-        if current:
-            epoch = current.get("Epoch", "0")
-            version = current.get("Version", "")
-            release = current.get("Release", "")
-            evr = f"{epoch}:{version}-{release}"
-            packages.append(Package(
-                name=current.get("Name", ""),
-                version=version,
-                release=release,
-                arch=current.get("Architecture", ""),
-                summary=current.get("Summary", ""),
-                repo=current.get("Repo", ""),
-                evr=evr,
-            ))
 
         return packages
 
@@ -259,34 +248,27 @@ class DnfBackend:
         # Parse output, each line is a copr repo
         return [line.strip() for line in result.stdout.strip().split("\n") if line.strip()]
 
+    def _os_release_version(self) -> str:
+        """Read VERSION_ID from /etc/os-release (cached)."""
+        if not hasattr(self, '_cached_os_version'):
+            try:
+                with open("/etc/os-release") as f:
+                    os_content = f.read()
+                match = re.search(r'VERSION_ID="?(\d+)"?', os_content)
+                self._cached_os_version = match.group(1) if match else "rawhide"
+            except OSError:
+                self._cached_os_version = "rawhide"
+        return self._cached_os_version
+
     def get_chroot(self) -> str:
         """Get current chroot"""
-        # Get version from /etc/os-release
-        try:
-            with open("/etc/os-release") as f:
-                content = f.read()
-            version_match = re.search(r'VERSION_ID="?(\d+)"?', content)
-            if version_match:
-                version = version_match.group(1)
-            else:
-                version = "rawhide"
-        except OSError:
-            version = "rawhide"
-
-        # Get architecture
         result = subprocess.run(["uname", "-m"], capture_output=True, text=True)
         arch = result.stdout.strip() if result.returncode == 0 else "x86_64"
-
-        return f"fedora-{version}-{arch}"
+        return f"fedora-{self._os_release_version()}-{arch}"
 
     def get_fedora_version(self) -> int:
         """Get Fedora version number"""
         try:
-            with open("/etc/os-release") as f:
-                content = f.read()
-            version_match = re.search(r'VERSION_ID="?(\d+)"?', content)
-            if version_match:
-                return int(version_match.group(1))
-        except OSError:
-            pass
-        return 0
+            return int(self._os_release_version())
+        except ValueError:
+            return 0

@@ -5,7 +5,7 @@ from enum import Enum
 
 from copa.copr_backend import CoprBackend, CoprProject
 from copa.dnf_backend import DnfBackend, Package
-from copa.obs_backend import OBSBackend, OBSPackage, OBSRepo
+from copa.obs_backend import OBSBackend, OBSPackage, OBSRepo, extract_fedora_version
 
 
 class Source(Enum):
@@ -98,7 +98,7 @@ class SearchEngine:
         best = None
         best_gap = -1
         for c in chroots:
-            version = self.obs._extract_fedora_version(c)
+            version = extract_fedora_version(c)
             if not version:
                 continue
             try:

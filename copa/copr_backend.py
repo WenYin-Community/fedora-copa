@@ -2,7 +2,6 @@
 
 from dataclasses import dataclass
 
-import requests
 from copr.v3 import Client
 from copr.v3.exceptions import CoprException, CoprNoResultException
 
@@ -45,7 +44,7 @@ class CoprBackend:
         self.client = Client.create_from_config_file()
 
     @retry(max_attempts=3, delay=1.0,
-           exceptions=(requests.ConnectionError, requests.Timeout, OSError))
+           exceptions=(OSError,))
     def search_projects(self, query: str, limit: int = 20) -> list[CoprProject]:
         """Search Copr projects"""
         try:
@@ -69,7 +68,7 @@ class CoprBackend:
             return []
 
     @retry(max_attempts=3, delay=1.0,
-           exceptions=(requests.ConnectionError, requests.Timeout, OSError))
+           exceptions=(OSError,))
     def get_project(self, owner: str, name: str) -> CoprProject | None:
         """Get project details"""
         try:

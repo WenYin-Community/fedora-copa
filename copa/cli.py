@@ -262,8 +262,8 @@ def cmd_search(args: argparse.Namespace) -> int:
 
     keywords = [k.lower() for k in args.keyword]
     search_query = " ".join(args.keyword)
-    use_json = args.json if hasattr(args, 'json') else False
-    use_regex = args.regex if hasattr(args, 'regex') else False
+    use_json = args.json
+    use_regex = args.regex
     if args.obs_only and args.no_obs:
         if not use_json:
             print(f"{RED}Error: --obs-only cannot be used with --no-obs{RESET}")
@@ -542,220 +542,220 @@ def cmd_install(args: argparse.Namespace) -> int:
     package = args.package
     dnf = DnfBackend()
     copr = CoprBackend()
-    obs = OBSBackend()
-    engine = SearchEngine(dnf=dnf, copr=copr, obs=obs)
-    state = AppState.load()
+    with OBSBackend() as obs:
+        engine = SearchEngine(dnf=dnf, copr=copr, obs=obs)
+        state = AppState.load()
 
-    # Get enabled repos
-    enabled_repos = dnf.get_enabled_repos()
-    fedora_version = dnf.get_fedora_version()
+        # Get enabled repos
+        enabled_repos = dnf.get_enabled_repos()
+        fedora_version = dnf.get_fedora_version()
 
-    print(f"Installing: {package}\n")
+        print(f"Installing: {package}\n")
 
-    # Third-party source risk warning
-    if not args.official_only:
-        print(f"{RED}WARNING: Packages from sources other than Fedora official repos")
-        print("  (RPM Fusion, Terra, Copr, OBS) are built by third parties.")
-        print(f"  Please verify the risks before installation.{RESET}\n")
+        # Third-party source risk warning
+        if not args.official_only:
+            print(f"{RED}WARNING: Packages from sources other than Fedora official repos")
+            print("  (RPM Fusion, Terra, Copr, OBS) are built by third parties.")
+            print(f"  Please verify the risks before installation.{RESET}\n")
 
-    # Dry-run mode
-    if args.dry_run:
-        print("[dry-run] Will execute:")
-        print(f"  1. Search {package} in Copr/OBS")
-        if args.include_local_repo:
-            print("     Also search: Fedora/RPM Fusion/Terra")
-        print(f"  2. If found: sudo dnf5 install {package}")
-        print("  3. If from Copr/OBS, ask whether to keep repo")
-        return 0
+        # Dry-run mode
+        if args.dry_run:
+            print("[dry-run] Will execute:")
+            print(f"  1. Search {package} in Copr/OBS")
+            if args.include_local_repo:
+                print("     Also search: Fedora/RPM Fusion/Terra")
+            print(f"  2. If found: sudo dnf5 install {package}")
+            print("  3. If from Copr/OBS, ask whether to keep repo")
+            return 0
 
-    # Steps 1-3: Search Fedora/RPM Fusion/Terra (only when explicitly requested)
-    search_local = args.include_local_repo or args.official_only or args.rpmfusion_only
-    if search_local and not args.copr_only and not args.obs_only:
-        local_results: list[tuple[str, Any]] = []
+        # Steps 1-3: Search Fedora/RPM Fusion/Terra (only when explicitly requested)
+        search_local = args.include_local_repo or args.official_only or args.rpmfusion_only
+        if search_local and not args.copr_only and not args.obs_only:
+            local_results: list[tuple[str, Any]] = []
 
-        # Search Fedora
-        if not args.rpmfusion_only:
-            print("Searching Fedora official repos...")
-            for pkg in dnf.search_in_repos(package, enabled_repos["fedora"]):
-                local_results.append(("Fedora", pkg))
+            # Search Fedora
+            if not args.rpmfusion_only:
+                print("Searching Fedora official repos...")
+                for pkg in dnf.search_in_repos(package, enabled_repos["fedora"]):
+                    local_results.append(("Fedora", pkg))
 
-        # Search RPM Fusion
-        if not args.official_only and enabled_repos["rpmfusion"]:
-            print("Searching RPM Fusion...")
-            for pkg in dnf.search_in_repos(package, enabled_repos["rpmfusion"]):
-                local_results.append(("RPM Fusion", pkg))
+            # Search RPM Fusion
+            if not args.official_only and enabled_repos["rpmfusion"]:
+                print("Searching RPM Fusion...")
+                for pkg in dnf.search_in_repos(package, enabled_repos["rpmfusion"]):
+                    local_results.append(("RPM Fusion", pkg))
 
-        # Search Terra
-        if not args.official_only and enabled_repos["terra"]:
-            print("Searching Terra...")
-            for pkg in dnf.search_in_repos(package, enabled_repos["terra"]):
-                local_results.append(("Terra", pkg))
+            # Search Terra
+            if not args.official_only and enabled_repos["terra"]:
+                print("Searching Terra...")
+                for pkg in dnf.search_in_repos(package, enabled_repos["terra"]):
+                    local_results.append(("Terra", pkg))
 
-        if local_results:
-            # Deduplicate by name
-            seen: set[str] = set()
-            unique_local: list[tuple[str, Any]] = []
-            for source, pkg in local_results:
-                if pkg.name not in seen:
-                    seen.add(pkg.name)
-                    unique_local.append((source, pkg))
+            if local_results:
+                # Deduplicate by name
+                seen: set[str] = set()
+                unique_local: list[tuple[str, Any]] = []
+                for source, pkg in local_results:
+                    if pkg.name not in seen:
+                        seen.add(pkg.name)
+                        unique_local.append((source, pkg))
 
-            print(f"\nFound {len(unique_local)} package(s) in local repos:\n")
-            for i, (source, pkg) in enumerate(unique_local, 1):
-                print(f"  [{i:2d}] {pkg.name}-{pkg.evr} ({source})")
-                if pkg.summary:
-                    print(f"       {pkg.summary}")
+                print(f"\nFound {len(unique_local)} package(s) in local repos:\n")
+                for i, (source, pkg) in enumerate(unique_local, 1):
+                    print(f"  [{i:2d}] {pkg.name}-{pkg.evr} ({source})")
+                    if pkg.summary:
+                        print(f"       {pkg.summary}")
 
-            if args.assumeyes:
-                target_name = unique_local[0][1].name
-                print(f"\n  Auto-selected: {target_name}")
-                print(f"\nExecuting: sudo dnf5 install {target_name}")
-                if dnf.install(target_name):
-                    print("Installation successful!")
-                else:
-                    print("Installation failed")
-                return 0
-
-            choice = input(
-                f"{BOLD}\nSelect [1-{len(unique_local)}], "
-                f"'s' to search Copr/OBS, 'q' to cancel: {RESET}"
-            ).strip().lower()
-            if choice in ("q", "quit"):
-                return 0
-            if choice == "s":
-                pass  # fall through to Copr/OBS search
-            else:
-                try:
-                    idx = int(choice)
-                    if 1 <= idx <= len(unique_local):
-                        target_name = unique_local[idx - 1][1].name
-                        print(f"\nExecuting: sudo dnf5 install {target_name}")
-                        if dnf.install(target_name):
-                            print("Installation successful!")
-                        else:
-                            print("Installation failed")
-                        return 0
-                except ValueError:
-                    pass
-                print("Invalid input, continuing to Copr/OBS search...")
-
-    # Steps 4-16: Search Copr and OBS (merged results)
-    if not args.official_only and not args.rpmfusion_only:
-        chroot = dnf.get_chroot()
-        all_sources: list[tuple[str, Any]] = []
-
-        # Search Copr and OBS in parallel
-        search_copr = not args.obs_only
-        search_obs = not args.no_obs and not args.copr_only
-
-        # Check OBS auth before searching
-        if search_obs and not obs.has_auth:
-            print(f"{YELLOW}OBS: credentials not configured, skipping.{RESET}")
-            print("  Configure: osc config (set user/pass for api.opensuse.org)\n")
-            search_obs = False
-
-        if search_copr and search_obs:
-            print("Searching Copr and OBS repos...")
-            with ThreadPoolExecutor(max_workers=2) as pool:
-                future_copr = pool.submit(
-                    engine.search_copr, package, chroot, fedora_version,
-                )
-                future_obs = pool.submit(engine.search_obs, package, fedora_version)
-                for future in as_completed([future_copr, future_obs]):  # type: ignore[var-annotated, arg-type]
-                    try:
-                        results = future.result(timeout=60)
-                    except TimeoutError:
-                        results = []
-                    if future is future_copr:
-                        for r in results[:10]:
-                            all_sources.append(("copr", r))
+                if args.assumeyes:
+                    target_name = unique_local[0][1].name
+                    print(f"\n  Auto-selected: {target_name}")
+                    print(f"\nExecuting: sudo dnf5 install {target_name}")
+                    if dnf.install(target_name):
+                        print("Installation successful!")
                     else:
-                        for r in results[:10]:
-                            all_sources.append(("obs", r))
-        else:
-            if search_copr:
-                print("Searching Copr repos...")
-                copr_results = engine.search_copr(package, chroot, fedora_version)
-                for r in copr_results[:10]:
-                    all_sources.append(("copr", r))
-            if search_obs:
-                print("Searching OBS repos...")
-                obs_results_list: list[Any] = engine.search_obs(package, fedora_version)
-                for r in obs_results_list[:10]:
-                    all_sources.append(("obs", r))
+                        print("Installation failed")
+                    return 0
 
-        if all_sources:
-            print(f"\nFound {len(all_sources)} packages from third-party repos:\n")
-
-            # Unified display list
-            for i, (source, data) in enumerate(all_sources, 1):
-                if source == "copr":
-                    if data.supports_chroot:
-                        chroot_status = "✓"
-                    elif data.best_chroot:
-                        chroot_status = "⚠ fallback"
-                    else:
-                        chroot_status = "✗"
-                    print(f"  [{i:2d}] [Copr] {data.project.owner}/{data.project.name}")
-                    print(f"       {data.project.description[:50]}...")
-                    print(f"       Chroot: {chroot_status} | Risk: {data.risk_level}")
-                else:  # obs
-                    version_status = "✓" if data.has_current_version else "⚠ fallback"
-                    print(f"  [{i:2d}] [OBS]  {data.package.project}/{data.package.name}")
-                    print(f"       {data.package.description[:50]}...")
-                    print(f"       Version: {version_status} | Risk: {data.risk_level}")
-
-            # User selection
-            if args.assumeyes and not args.copr:
-                print(f"\n{RED}Error: --copr OWNER/PROJECT required in non-interactive mode{RESET}")
-                return 1
-
-            if args.copr:
-                # Use specified Copr
-                parsed_copr = _parse_owner_project(args.copr)
-                if not parsed_copr:
-                    print(f"\n{RED}Error: Invalid --copr format, expected OWNER/PROJECT{RESET}")
-                    return 1
-                owner, project = parsed_copr
-                selected = None
-                selected_source = None
-                for source, data in all_sources:
-                    if (source == "copr"
-                            and data.project.owner == owner
-                            and data.project.name == project):
-                        selected = data
-                        selected_source = "copr"
-                        break
-                if not selected:
-                    print(f"\n{RED}Error: Copr project {args.copr} not found{RESET}")
-                    return 1
-            else:
-                # Interactive selection
                 choice = input(
-                    f"{BOLD}\nSelect package "
-                    f"[1-{len(all_sources)}, q to cancel]: {RESET}"
+                    f"{BOLD}\nSelect [1-{len(unique_local)}], "
+                    f"'s' to search Copr/OBS, 'q' to cancel: {RESET}"
                 ).strip().lower()
                 if choice in ("q", "quit"):
                     return 0
-                try:
-                    idx = int(choice) - 1
-                    if 0 <= idx < len(all_sources):
-                        selected_source, selected = all_sources[idx]
-                    else:
-                        print("Invalid selection")
-                        return 1
-                except ValueError:
-                    print("Invalid input")
+                if choice == "s":
+                    pass  # fall through to Copr/OBS search
+                else:
+                    try:
+                        idx = int(choice)
+                        if 1 <= idx <= len(unique_local):
+                            target_name = unique_local[idx - 1][1].name
+                            print(f"\nExecuting: sudo dnf5 install {target_name}")
+                            if dnf.install(target_name):
+                                print("Installation successful!")
+                            else:
+                                print("Installation failed")
+                            return 0
+                    except ValueError:
+                        pass
+                    print("Invalid input, continuing to Copr/OBS search...")
+
+        # Steps 4-16: Search Copr and OBS (merged results)
+        if not args.official_only and not args.rpmfusion_only:
+            chroot = dnf.get_chroot()
+            all_sources: list[tuple[str, Any]] = []
+
+            # Search Copr and OBS in parallel
+            search_copr = not args.obs_only
+            search_obs = not args.no_obs and not args.copr_only
+
+            # Check OBS auth before searching
+            if search_obs and not obs.has_auth:
+                print(f"{YELLOW}OBS: credentials not configured, skipping.{RESET}")
+                print("  Configure: osc config (set user/pass for api.opensuse.org)\n")
+                search_obs = False
+
+            if search_copr and search_obs:
+                print("Searching Copr and OBS repos...")
+                with ThreadPoolExecutor(max_workers=2) as pool:
+                    future_copr = pool.submit(
+                        engine.search_copr, package, chroot, fedora_version,
+                    )
+                    future_obs = pool.submit(engine.search_obs, package, fedora_version)
+                    for future in as_completed([future_copr, future_obs]):  # type: ignore[var-annotated, arg-type]
+                        try:
+                            results = future.result(timeout=60)
+                        except TimeoutError:
+                            results = []
+                        if future is future_copr:
+                            for r in results[:10]:
+                                all_sources.append(("copr", r))
+                        else:
+                            for r in results[:10]:
+                                all_sources.append(("obs", r))
+            else:
+                if search_copr:
+                    print("Searching Copr repos...")
+                    copr_results = engine.search_copr(package, chroot, fedora_version)
+                    for r in copr_results[:10]:
+                        all_sources.append(("copr", r))
+                if search_obs:
+                    print("Searching OBS repos...")
+                    obs_results_list: list[Any] = engine.search_obs(package, fedora_version)
+                    for r in obs_results_list[:10]:
+                        all_sources.append(("obs", r))
+
+            if all_sources:
+                print(f"\nFound {len(all_sources)} packages from third-party repos:\n")
+
+                # Unified display list
+                for i, (source, data) in enumerate(all_sources, 1):
+                    if source == "copr":
+                        if data.supports_chroot:
+                            chroot_status = "✓"
+                        elif data.best_chroot:
+                            chroot_status = "⚠ fallback"
+                        else:
+                            chroot_status = "✗"
+                        print(f"  [{i:2d}] [Copr] {data.project.owner}/{data.project.name}")
+                        print(f"       {data.project.description[:50]}...")
+                        print(f"       Chroot: {chroot_status} | Risk: {data.risk_level}")
+                    else:  # obs
+                        version_status = "✓" if data.has_current_version else "⚠ fallback"
+                        print(f"  [{i:2d}] [OBS]  {data.package.project}/{data.package.name}")
+                        print(f"       {data.package.description[:50]}...")
+                        print(f"       Version: {version_status} | Risk: {data.risk_level}")
+
+                # User selection
+                if args.assumeyes and not args.copr:
+                    print(f"\n{RED}Error: --copr OWNER/PROJECT required in non-interactive mode{RESET}")
                     return 1
 
-            # Execute installation based on source
-            if selected_source == "copr":
-                return _install_from_copr(args, dnf, state, engine, package, selected, chroot)
-            else:
-                return _install_from_obs(args, dnf, obs, state, package, selected, fedora_version)
+                if args.copr:
+                    # Use specified Copr
+                    parsed_copr = _parse_owner_project(args.copr)
+                    if not parsed_copr:
+                        print(f"\n{RED}Error: Invalid --copr format, expected OWNER/PROJECT{RESET}")
+                        return 1
+                    owner, project = parsed_copr
+                    selected = None
+                    selected_source = None
+                    for source, data in all_sources:
+                        if (source == "copr"
+                                and data.project.owner == owner
+                                and data.project.name == project):
+                            selected = data
+                            selected_source = "copr"
+                            break
+                    if not selected:
+                        print(f"\n{RED}Error: Copr project {args.copr} not found{RESET}")
+                        return 1
+                else:
+                    # Interactive selection
+                    choice = input(
+                        f"{BOLD}\nSelect package "
+                        f"[1-{len(all_sources)}, q to cancel]: {RESET}"
+                    ).strip().lower()
+                    if choice in ("q", "quit"):
+                        return 0
+                    try:
+                        idx = int(choice) - 1
+                        if 0 <= idx < len(all_sources):
+                            selected_source, selected = all_sources[idx]
+                        else:
+                            print("Invalid selection")
+                            return 1
+                    except ValueError:
+                        print("Invalid input")
+                        return 1
 
-    print(f"\nPackage {package} not found")
-    return 1
+                # Execute installation based on source
+                if selected_source == "copr":
+                    return _install_from_copr(args, dnf, state, engine, package, selected, chroot)
+                else:
+                    return _install_from_obs(args, dnf, obs, state, package, selected, fedora_version)
+
+        print(f"\nPackage {package} not found")
+        return 1
 
 
 def _resolve_package_name(
@@ -878,19 +878,30 @@ def _install_from_copr(
             )
             state.save()
 
+            post_action = getattr(args.config, 'install', None)
+            post_action = post_action.default_copr_post_action if post_action else "disable"
             if not args.keep_copr:
-                print(f"{BOLD}\nCopr repo {owner_project} is kept enabled.{RESET}")
-                print(f"{YELLOW}Note: This repo will participate in system updates.")
-                print(f"If you don't want this, you can disable or remove it:{RESET}")
-                print(f"  copa repo disable copr:{owner_project}")
-                print(f"  copa repo remove copr:{owner_project}")
-
-                choice = input(f"{BOLD}\nDisable repo now? [y/N]: {RESET}").strip().lower()
-                if choice in ("y", "yes"):
-                    print("Disabling repo...")
-                    dnf.copr_disable(owner_project)
+                if post_action == "keep":
+                    print(f"\nCopr repo {owner_project} kept enabled (config).")
+                elif post_action == "remove":
+                    print(f"\nRemoving Copr repo {owner_project} (config)...")
+                    dnf.copr_remove(owner_project)
+                    state.remove_copr_repo(selected.project.owner, selected.project.name)
+                    state.save()
                 else:
-                    print("Keeping repo enabled")
+                    # "disable" (default) - ask user
+                    print(f"{BOLD}\nCopr repo {owner_project} is kept enabled.{RESET}")
+                    print(f"{YELLOW}Note: This repo will participate in system updates.")
+                    print(f"If you don't want this, you can disable or remove it:{RESET}")
+                    print(f"  copa repo disable copr:{owner_project}")
+                    print(f"  copa repo remove copr:{owner_project}")
+
+                    choice = input(f"{BOLD}\nDisable repo now? [y/N]: {RESET}").strip().lower()
+                    if choice in ("y", "yes"):
+                        print("Disabling repo...")
+                        dnf.copr_disable(owner_project)
+                    else:
+                        print("Keeping repo enabled")
         else:
             print("Installation failed")
             print(f"{YELLOW}Copr repo {owner_project} is kept enabled.{RESET}")
@@ -1021,7 +1032,7 @@ def cmd_info(args: argparse.Namespace) -> int:
     from copa.dnf_backend import DnfBackend
 
     package = args.package
-    use_json = args.json if hasattr(args, 'json') else False
+    use_json = args.json
     dnf = DnfBackend()
     copr = CoprBackend()
 
@@ -1113,8 +1124,6 @@ def cmd_info(args: argparse.Namespace) -> int:
 
     return 0
 
-    return 0
-
 
 def cmd_list(args: argparse.Namespace) -> int:
     """list command implementation"""
@@ -1125,7 +1134,7 @@ def cmd_list(args: argparse.Namespace) -> int:
 
     copr = CoprBackend()
     state = AppState.load()
-    use_json = args.json if hasattr(args, 'json') else False
+    use_json = args.json
 
     result_data: dict[str, Any] = {
         "packages": [],
@@ -1207,182 +1216,182 @@ def cmd_repo(args: argparse.Namespace) -> int:
     from copa.state import AppState
 
     dnf = DnfBackend()
-    obs = OBSBackend()
-    state = AppState.load()
+    with OBSBackend() as obs:
+        state = AppState.load()
 
-    if not args.repo_command:
-        print("Please specify a repo subcommand: list, enable, disable, remove")
-        return 1
+        if not args.repo_command:
+            print("Please specify a repo subcommand: list, enable, disable, remove")
+            return 1
 
-    if args.repo_command == "list":
-        print("Third-party repos:\n")
+        if args.repo_command == "list":
+            print("Third-party repos:\n")
 
-        # Get all repos to distinguish status
-        all_repos = dnf.repolist(enabled_only=False)
-        enabled_ids = {r.id for r in dnf.repolist(enabled_only=True)}
+            # Get all repos to distinguish status
+            all_repos = dnf.repolist(enabled_only=False)
+            enabled_ids = {r.id for r in dnf.repolist(enabled_only=True)}
 
-        # Display Copr repos
-        copr_all = [
-            r for r in all_repos
-            if r.id.lower().startswith("copr:") or r.id.lower().startswith("coprdep:")
-        ]
-        if copr_all or state.copr_repos:
-            print("Copr repos:")
-            # System Copr repos (including disabled)
-            for repo in copr_all:
-                parts = repo.id.split(":")
-                if len(parts) >= 4:
-                    owner = parts[2]
-                    project = parts[3]
+            # Display Copr repos
+            copr_all = [
+                r for r in all_repos
+                if r.id.lower().startswith("copr:") or r.id.lower().startswith("coprdep:")
+            ]
+            if copr_all or state.copr_repos:
+                print("Copr repos:")
+                # System Copr repos (including disabled)
+                for repo in copr_all:
+                    parts = repo.id.split(":")
+                    if len(parts) >= 4:
+                        owner = parts[2]
+                        project = parts[3]
+                        status = "enabled" if repo.id in enabled_ids else "disabled"
+                        print(f"  copr:{owner}/{project} [{status}] [system]")
+                    else:
+                        status = "enabled" if repo.id in enabled_ids else "disabled"
+                        print(f"  copr:{repo.id} [{status}] [system]")
+
+                # Copr repos managed by copa (not in system list)
+                for copr_repo in state.copr_repos:
+                    copr_repo_id = (
+                        f"copr:copr.fedorainfracloud.org:"
+                        f"{copr_repo.owner}:{copr_repo.project}"
+                    )
+                    if copr_repo_id not in {r.id for r in copr_all}:
+                        print(f"  copr:{copr_repo.owner}/{copr_repo.project} [enabled] [copa]")
+                        if copr_repo.chroot:
+                            print(f"    Chroot: {copr_repo.chroot}")
+                        if copr_repo.installed_packages:
+                            print(f"    Packages: {', '.join(copr_repo.installed_packages)}")
+
+            # Display OBS repos
+            obs_all = [
+                r for r in all_repos
+                if r.id.lower().startswith("home_") or r.id.lower().startswith("home:")
+            ]
+            if obs_all or state.obs_repos:
+                print("\nOBS repos:")
+                for repo in obs_all:
                     status = "enabled" if repo.id in enabled_ids else "disabled"
-                    print(f"  copr:{owner}/{project} [{status}] [system]")
-                else:
-                    status = "enabled" if repo.id in enabled_ids else "disabled"
-                    print(f"  copr:{repo.id} [{status}] [system]")
+                    print(f"  obs:{repo.id} [{status}] [system]")
 
-            # Copr repos managed by copa (not in system list)
-            for copr_repo in state.copr_repos:
-                copr_repo_id = (
-                    f"copr:copr.fedorainfracloud.org:"
-                    f"{copr_repo.owner}:{copr_repo.project}"
-                )
-                if copr_repo_id not in {r.id for r in copr_all}:
-                    print(f"  copr:{copr_repo.owner}/{copr_repo.project} [enabled] [copa]")
-                    if copr_repo.chroot:
-                        print(f"    Chroot: {copr_repo.chroot}")
-                    if copr_repo.installed_packages:
-                        print(f"    Packages: {', '.join(copr_repo.installed_packages)}")
+                for obs_repo in state.obs_repos:
+                    obs_repo_ids = {r.id for r in obs_all}
+                    if not _obs_project_exists_in_system(obs_repo.project, obs_repo_ids):
+                        print(f"  obs:{obs_repo.project} [enabled] [copa]")
+                        if obs_repo.fedora_version:
+                            print(f"    Fedora: {obs_repo.fedora_version}")
+                        if obs_repo.installed_packages:
+                            print(f"    Packages: {', '.join(obs_repo.installed_packages)}")
 
-        # Display OBS repos
-        obs_all = [
-            r for r in all_repos
-            if r.id.lower().startswith("home_") or r.id.lower().startswith("home:")
-        ]
-        if obs_all or state.obs_repos:
-            print("\nOBS repos:")
-            for repo in obs_all:
-                status = "enabled" if repo.id in enabled_ids else "disabled"
-                print(f"  obs:{repo.id} [{status}] [system]")
+            if not copr_all and not obs_all and not state.copr_repos and not state.obs_repos:
+                print("  No third-party repos found")
 
-            for obs_repo in state.obs_repos:
-                obs_repo_ids = {r.id for r in obs_all}
-                if not _obs_project_exists_in_system(obs_repo.project, obs_repo_ids):
-                    print(f"  obs:{obs_repo.project} [enabled] [copa]")
-                    if obs_repo.fedora_version:
-                        print(f"    Fedora: {obs_repo.fedora_version}")
-                    if obs_repo.installed_packages:
-                        print(f"    Packages: {', '.join(obs_repo.installed_packages)}")
+            return 0
 
-        if not copr_all and not obs_all and not state.copr_repos and not state.obs_repos:
-            print("  No third-party repos found")
+        # Parse repo argument: copr:owner/project or obs:project
+        repo_arg = args.repo
+        if repo_arg.startswith("copr:"):
+            repo_type = "copr"
+            repo_name = repo_arg[5:]
+        elif repo_arg.startswith("obs:"):
+            repo_type = "obs"
+            repo_name = repo_arg[4:]
+        else:
+            print(f"{RED}Error: Invalid repo format. Use copr:owner/project or obs:project{RESET}")
+            return 1
 
-        return 0
-
-    # Parse repo argument: copr:owner/project or obs:project
-    repo_arg = args.repo
-    if repo_arg.startswith("copr:"):
-        repo_type = "copr"
-        repo_name = repo_arg[5:]
-    elif repo_arg.startswith("obs:"):
-        repo_type = "obs"
-        repo_name = repo_arg[4:]
-    else:
-        print(f"{RED}Error: Invalid repo format. Use copr:owner/project or obs:project{RESET}")
-        return 1
-
-    if args.repo_command == "enable":
-        if repo_type == "copr":
-            parsed_repo = _parse_owner_project(repo_name)
-            if not parsed_repo:
-                print(f"{RED}Error: Invalid copr repo format, expected owner/project{RESET}")
-                return 1
-            owner, project = parsed_repo
-            chroot = args.chroot or dnf.get_chroot()
-            print(f"Enabling Copr repo: {repo_name}")
-            if dnf.copr_enable(repo_name, chroot):
-                print("✓ Copr repo enabled")
-                state.add_copr_repo(
-                    owner=owner,
-                    project=project,
-                    repo_id=f"copr:{repo_name}",
-                    chroot=chroot,
-                    enabled_by_copa=True,
-                )
-                state.save()
-            else:
-                print("✗ Failed to enable Copr repo")
-                return 1
-        else:  # obs
-            print(f"Enabling OBS repo: {repo_name}")
-            # OBS needs to download repo file
-            fedora_version = dnf.get_fedora_version()
-            repos = obs.find_fedora_repos(repo_name, fedora_version)
-            if repos:
-                best_repo = repos[0]
-                if obs.download_repo_file(repo_name, best_repo.repository):
-                    print("✓ OBS repo enabled (repo file downloaded)")
-                    state.add_obs_repo(
-                        project=repo_name,
-                        repository=best_repo.repository,
-                        repo_file_name=obs._get_repo_file_name(repo_name),
-                        fedora_version=best_repo.fedora_version or "",
+        if args.repo_command == "enable":
+            if repo_type == "copr":
+                parsed_repo = _parse_owner_project(repo_name)
+                if not parsed_repo:
+                    print(f"{RED}Error: Invalid copr repo format, expected owner/project{RESET}")
+                    return 1
+                owner, project = parsed_repo
+                chroot = args.chroot or dnf.get_chroot()
+                print(f"Enabling Copr repo: {repo_name}")
+                if dnf.copr_enable(repo_name, chroot):
+                    print("✓ Copr repo enabled")
+                    state.add_copr_repo(
+                        owner=owner,
+                        project=project,
+                        repo_id=f"copr:{repo_name}",
+                        chroot=chroot,
                         enabled_by_copa=True,
                     )
                     state.save()
                 else:
-                    print("✗ Failed to download OBS repo file")
+                    print("✗ Failed to enable Copr repo")
                     return 1
-            else:
-                print(f"✗ No Fedora repos found for OBS project: {repo_name}")
-                return 1
+            else:  # obs
+                print(f"Enabling OBS repo: {repo_name}")
+                # OBS needs to download repo file
+                fedora_version = dnf.get_fedora_version()
+                repos = obs.find_fedora_repos(repo_name, fedora_version)
+                if repos:
+                    best_repo = repos[0]
+                    if obs.download_repo_file(repo_name, best_repo.repository):
+                        print("✓ OBS repo enabled (repo file downloaded)")
+                        state.add_obs_repo(
+                            project=repo_name,
+                            repository=best_repo.repository,
+                            repo_file_name=obs._get_repo_file_name(repo_name),
+                            fedora_version=best_repo.fedora_version or "",
+                            enabled_by_copa=True,
+                        )
+                        state.save()
+                    else:
+                        print("✗ Failed to download OBS repo file")
+                        return 1
+                else:
+                    print(f"✗ No Fedora repos found for OBS project: {repo_name}")
+                    return 1
 
-    elif args.repo_command == "disable":
-        if repo_type == "copr":
-            print(f"Disabling Copr repo: {repo_name}")
-            if dnf.copr_disable(repo_name):
-                print("✓ Copr repo disabled")
-            else:
-                print("✗ Failed to disable Copr repo")
-                return 1
-        else:  # obs
-            print(f"Disabling OBS repo: {repo_name}")
-            if obs.disable_repo(repo_name):
-                print("✓ OBS repo disabled")
-            else:
-                print("✗ Failed to disable OBS repo")
-                return 1
+        elif args.repo_command == "disable":
+            if repo_type == "copr":
+                print(f"Disabling Copr repo: {repo_name}")
+                if dnf.copr_disable(repo_name):
+                    print("✓ Copr repo disabled")
+                else:
+                    print("✗ Failed to disable Copr repo")
+                    return 1
+            else:  # obs
+                print(f"Disabling OBS repo: {repo_name}")
+                if obs.disable_repo(repo_name):
+                    print("✓ OBS repo disabled")
+                else:
+                    print("✗ Failed to disable OBS repo")
+                    return 1
 
-    elif args.repo_command == "remove":
-        if repo_type == "copr":
-            parsed_repo = _parse_owner_project(repo_name)
-            if not parsed_repo:
-                print(f"{RED}Error: Invalid copr repo format, expected owner/project{RESET}")
-                return 1
-            owner, project = parsed_repo
-            print(f"Removing Copr repo: {repo_name}")
-            if dnf.copr_remove(repo_name):
-                print("✓ Copr repo removed")
-                state.remove_copr_repo(owner, project)
-                state.save()
-            else:
-                print("✗ Failed to remove Copr repo")
-                return 1
-        else:  # obs
-            print(f"Removing OBS repo: {repo_name}")
-            if obs.remove_repo_file(repo_name):
-                dnf.makecache()
-                print("✓ OBS repo removed")
-                state.remove_obs_repo(repo_name)
-                state.save()
-            else:
-                print("✗ Failed to remove OBS repo")
-                return 1
+        elif args.repo_command == "remove":
+            if repo_type == "copr":
+                parsed_repo = _parse_owner_project(repo_name)
+                if not parsed_repo:
+                    print(f"{RED}Error: Invalid copr repo format, expected owner/project{RESET}")
+                    return 1
+                owner, project = parsed_repo
+                print(f"Removing Copr repo: {repo_name}")
+                if dnf.copr_remove(repo_name):
+                    print("✓ Copr repo removed")
+                    state.remove_copr_repo(owner, project)
+                    state.save()
+                else:
+                    print("✗ Failed to remove Copr repo")
+                    return 1
+            else:  # obs
+                print(f"Removing OBS repo: {repo_name}")
+                if obs.remove_repo_file(repo_name):
+                    dnf.makecache()
+                    print("✓ OBS repo removed")
+                    state.remove_obs_repo(repo_name)
+                    state.save()
+                else:
+                    print("✗ Failed to remove OBS repo")
+                    return 1
 
-    else:
-        print("Please specify a repo subcommand: list, enable, disable, remove")
-        return 1
+        else:
+            print("Please specify a repo subcommand: list, enable, disable, remove")
+            return 1
 
-    return 0
+        return 0
 
 
 def cmd_doctor(args: argparse.Namespace) -> int:
@@ -1706,7 +1715,7 @@ def cmd_repoquery(args: argparse.Namespace) -> int:
 
     package = args.package
     dnf = DnfBackend()
-    use_json = args.json if hasattr(args, 'json') else False
+    use_json = args.json
 
     result_data = {
         "package": package,
@@ -1795,7 +1804,7 @@ def cmd_provides(args: argparse.Namespace) -> int:
 
     file_path = args.file
     dnf = DnfBackend()
-    use_json = args.json if hasattr(args, 'json') else False
+    use_json = args.json
 
     result_data = {
         "file": file_path,

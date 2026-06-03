@@ -26,6 +26,22 @@ def _xpath_string_literal(value: str) -> str:
     return f"concat({', '.join(quoted_parts)})"
 
 
+def extract_fedora_version(repo_name: str) -> str | None:
+    """Extract Fedora version from repo name.
+
+    Common formats: Fedora_43, Fedora_43_x86_64, fedora-43-x86_64
+    """
+    patterns = [
+        r"[Ff]edora[_-](\d+)",
+        r"[Ff]c(\d+)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, repo_name)
+        if match:
+            return match.group(1)
+    return None
+
+
 @dataclass
 class OBSProject:
     """OBS project info"""
@@ -74,12 +90,19 @@ class OBSBackend:
     def __init__(self, api_base: str = OBS_API_BASE):
         self.api_base = api_base
         self._auth = self._load_osc_auth()
-        self.client = httpx.Client(
-            headers={"Accept": "application/xml; charset=utf-8"},
-            timeout=60.0,
-            auth=self._auth,
-        )
+        self._client: httpx.Client | None = None
         self._available: bool | None = None  # cached health check result
+
+    @property
+    def client(self) -> httpx.Client:
+        """Lazy-initialised httpx client."""
+        if self._client is None:
+            self._client = httpx.Client(
+                headers={"Accept": "application/xml; charset=utf-8"},
+                timeout=60.0,
+                auth=self._auth,
+            )
+        return self._client
 
     @staticmethod
     def _load_osc_auth() -> httpx.BasicAuth | None:
@@ -213,7 +236,7 @@ class OBSBackend:
             for repo_elem in root.findall(".//repository"):
                 repo_name = repo_elem.get("name", "")
                 # Try to extract Fedora version from repo name
-                fedora_version = self._extract_fedora_version(repo_name)
+                fedora_version = extract_fedora_version(repo_name)
                 repo_url = f"https://download.opensuse.org/repositories/{project}/{repo_name}"
                 repo_file_name = self._get_repo_file_name(project)
 
@@ -229,19 +252,6 @@ class OBSBackend:
             return repos
         except (httpx.HTTPError, ET.ParseError):
             return []
-
-    def _extract_fedora_version(self, repo_name: str) -> str | None:
-        """Extract Fedora version from repo name"""
-        # Common formats: Fedora_43, Fedora_43_x86_64, fedora-43-x86_64
-        patterns = [
-            r"[Ff]edora[_-](\d+)",
-            r"[Ff]c(\d+)",
-        ]
-        for pattern in patterns:
-            match = re.search(pattern, repo_name)
-            if match:
-                return match.group(1)
-        return None
 
     def _get_repo_file_name(self, project: str) -> str:
         """Generate repo file name (matches OBS download filename)"""
@@ -341,7 +351,9 @@ class OBSBackend:
 
     def close(self) -> None:
         """Close client"""
-        self.client.close()
+        if self._client is not None:
+            self._client.close()
+            self._client = None
 
     def __enter__(self) -> "OBSBackend":
         return self

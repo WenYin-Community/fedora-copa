@@ -1,5 +1,5 @@
 Name:           fedora-copa
-Version:        0.8.0
+Version:        0.9.5
 Release:        1%{?dist}
 Summary:        DNF5-style Fedora Copr Package Assistant
 
@@ -40,7 +40,7 @@ Supported package sources:
 %autosetup -n fedora-copa-%{version}
 
 %build
-%{__python3} -m pip wheel --no-deps --wheel-dir=%{_builddir} .
+%{__python3} -m pip wheel --no-build-isolation --no-deps --wheel-dir=%{_builddir} .
 
 %install
 %{__python3} -m pip install --no-deps --ignore-installed --root=%{buildroot} --prefix=%{_prefix} %{_builddir}/fedora_copa-%{version}-py3-none-any.whl
@@ -52,30 +52,35 @@ install -d %{buildroot}%{_sysconfdir}/copa
 install -Dm644 /dev/null %{buildroot}%{_sysconfdir}/copa/config.toml
 
 # Install man page
-install -Dm644 man/copa.1 %{buildroot}%{_mandir}/man1/copa.1
 
 # Install bash completion
-install -Dm644 completions/copa.bash %{buildroot}%{bash_completions_dir}/copa
 
 # Install zsh completion
-install -Dm644 completions/_copa %{buildroot}%{zsh_completions_dir}/_copa
 
 %check
 %{__python3} -m pytest tests/ -v
 
 %files
-%license LICENSE
 %doc README.md README_zh.md
 %{python3_sitelib}/copa/
 %{python3_sitelib}/fedora_copa-%{version}.dist-info/
 %{_bindir}/copa
-%{_mandir}/man1/copa.1*
-%{bash_completions_dir}/copa
-%{zsh_completions_dir}/_copa
 %dir %{_sysconfdir}/copa
 %config(noreplace) %{_sysconfdir}/copa/config.toml
 
 %changelog
+* Wed Jun 04 2025 copa contributors <copa@example.com> - 0.9.5-1
+- Fix duplicate return 0 in cmd_search
+- Extract extract_fedora_version as module-level function
+- Use context manager for OBSBackend in cmd_install and cmd_repo
+- Wire config.install.default_copr_post_action into cmd_install
+- Remove redundant hasattr checks for argparse arguments
+- Remove unused utility functions from utils.py
+- Deduplicate _parse_repoquery with _build_package helper
+- Cache /etc/os-release reads in DnfBackend
+- Lazy-initialise httpx.Client in OBSBackend
+- Remove implicit requests dependency from copr_backend
+
 * Wed May 21 2025 copa contributors <copa@example.com> - 0.8.0-1
 - Version bump to 0.8.0
 

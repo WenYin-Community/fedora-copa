@@ -1,7 +1,6 @@
 """Utility functions"""
 
 import shutil
-import subprocess
 import sys
 import time
 from collections.abc import Callable
@@ -46,58 +45,15 @@ def check_command_exists(command: str) -> bool:
     return shutil.which(command) is not None
 
 
-def check_dnf5() -> bool:
-    """Check if dnf5 is available"""
-    return check_command_exists("dnf5")
-
-
-def check_dnf() -> bool:
-    """Check if dnf is available"""
-    return check_command_exists("dnf")
-
-
-def check_copr_cli() -> bool:
-    """Check if copr-cli is available"""
-    return check_command_exists("copr-cli")
-
-
 def get_dnf_binary() -> str:
     """Get available dnf binary"""
-    if check_dnf5():
+    if check_command_exists("dnf5"):
         return "dnf5"
-    elif check_dnf():
+    elif check_command_exists("dnf"):
         return "dnf"
     else:
         print("Error: dnf5 or dnf not found", file=sys.stderr)
         sys.exit(1)
-
-
-def run_command(
-    args: list[str],
-    sudo: bool = False,
-    check: bool = True,
-    capture: bool = True,
-) -> subprocess.CompletedProcess[str]:
-    """Execute command"""
-    cmd: list[str] = []
-    if sudo:
-        cmd.append("sudo")
-    cmd.extend(args)
-
-    result = subprocess.run(
-        cmd,
-        capture_output=capture,
-        text=True,
-    )
-
-    if check and result.returncode != 0:
-        raise RuntimeError(
-            f"Command failed: {' '.join(cmd)}\n"
-            f"Return code: {result.returncode}\n"
-            f"stderr: {result.stderr}"
-        )
-
-    return result
 
 
 def confirm(prompt: str, default: bool = False) -> bool:
@@ -109,55 +65,3 @@ def confirm(prompt: str, default: bool = False) -> bool:
         return default
 
     return response in ("y", "yes")
-
-
-def select_from_list(
-    prompt: str,
-    options: list[str],
-    allow_quit: bool = True,
-) -> int | None:
-    """Select from a list"""
-    for i, option in enumerate(options, 1):
-        print(f"  [{i}] {option}")
-
-    if allow_quit:
-        print("  [q] Cancel")
-
-    while True:
-        response = input(prompt).strip().lower()
-
-        if allow_quit and response in ("q", "quit", "cancel"):
-            return None
-
-        try:
-            choice = int(response)
-            if 1 <= choice <= len(options):
-                return choice - 1
-            print(f"Enter a number between 1-{len(options)}")
-        except ValueError:
-            print("Enter a valid number or 'q' to cancel")
-
-
-def format_size(size_bytes: int) -> str:
-    """Format file size"""
-    size: float = size_bytes
-    for unit in ["B", "KB", "MB", "GB"]:
-        if size < 1024:
-            return f"{size:.1f} {unit}"
-        size /= 1024
-    return f"{size:.1f} TB"
-
-
-def print_error(message: str) -> None:
-    """Print error message"""
-    print(f"Error: {message}", file=sys.stderr)
-
-
-def print_warning(message: str) -> None:
-    """Print warning message"""
-    print(f"Warning: {message}", file=sys.stderr)
-
-
-def print_info(message: str) -> None:
-    """Print info message"""
-    print(message)
