@@ -1,5 +1,5 @@
 Name:           fedora-copa
-Version:        0.9.5
+Version:        0.9.5.1
 Release:        1%{?dist}
 Summary:        DNF5-style Fedora Copr Package Assistant
 
@@ -52,10 +52,13 @@ install -d %{buildroot}%{_sysconfdir}/copa
 install -Dm644 /dev/null %{buildroot}%{_sysconfdir}/copa/config.toml
 
 # Install man page
+install -Dm644 man/copa.1 %{buildroot}%{_mandir}/man1/copa.1
 
 # Install bash completion
+install -Dm644 completions/copa.bash %{buildroot}%{_datadir}/bash-completion/completions/copa
 
 # Install zsh completion
+install -Dm644 completions/_copa %{buildroot}%{_datadir}/zsh/site-functions/_copa
 
 %check
 %{__python3} -m pytest tests/ -v
@@ -65,10 +68,16 @@ install -Dm644 /dev/null %{buildroot}%{_sysconfdir}/copa/config.toml
 %{python3_sitelib}/copa/
 %{python3_sitelib}/fedora_copa-%{version}.dist-info/
 %{_bindir}/copa
+%{_mandir}/man1/copa.1*
+%{_datadir}/bash-completion/completions/copa
+%{_datadir}/zsh/site-functions/_copa
 %dir %{_sysconfdir}/copa
 %config(noreplace) %{_sysconfdir}/copa/config.toml
 
 %changelog
+* Wed Jun 04 2025 copa contributors <copa@example.com> - 0.9.5.1-1
+- Fix missing shell completions and man page in RPM package
+
 * Wed Jun 04 2025 copa contributors <copa@example.com> - 0.9.5-1
 - Fix duplicate return 0 in cmd_search
 - Extract extract_fedora_version as module-level function
