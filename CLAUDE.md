@@ -80,7 +80,7 @@ copa/
 
 ## 发布与 CI
 
-`.github/workflows/` 含两个 workflow：`ci.yml`（完整发布链路）与 `build-rpm.yml`（旧版冗余，仅 test/build-rpm/build-srpm，无发布；tag 推送会触发重复构建，可删除但需先确认无依赖）。`ci.yml` 包含 6 个 job：
+`.github/workflows/ci.yml` 是唯一 workflow，包含 6 个 job：
 
 1. `lint`（ruff + mypy，Python 3.11）
 2. `test`（pytest，Python 3.11/3.12/3.13）
