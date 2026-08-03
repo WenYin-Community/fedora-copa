@@ -2,42 +2,6 @@
 
 import shutil
 import sys
-import time
-from collections.abc import Callable
-from functools import wraps
-from typing import Any, TypeVar
-
-F = TypeVar("F", bound=Callable[..., Any])
-
-
-def retry(
-    max_attempts: int = 3,
-    delay: float = 1.0,
-    backoff: float = 2.0,
-    exceptions: tuple[type[BaseException], ...] = (Exception,),
-) -> Callable[[F], F]:
-    """Retry decorator with exponential backoff"""
-    def decorator(func: F) -> F:
-        @wraps(func)
-        def wrapper(*args: Any, **kwargs: Any) -> Any:
-            last_exc: BaseException | None = None
-            wait = delay
-            for attempt in range(max_attempts):
-                try:
-                    return func(*args, **kwargs)
-                except exceptions as e:
-                    last_exc = e
-                    if attempt < max_attempts - 1:
-                        print(
-                            f"  Retry {attempt + 1}/{max_attempts} "
-                            f"after {wait:.0f}s: {e}",
-                            file=sys.stderr,
-                        )
-                        time.sleep(wait)
-                        wait *= backoff
-            raise last_exc  # type: ignore[misc]
-        return wrapper  # type: ignore[return-value]
-    return decorator
 
 
 def check_command_exists(command: str) -> bool:
@@ -59,7 +23,11 @@ def get_dnf_binary() -> str:
 def confirm(prompt: str, default: bool = False) -> bool:
     """Confirmation prompt"""
     suffix = " [Y/n]: " if default else " [y/N]: "
-    response = input(prompt + suffix).strip().lower()
+    try:
+        response = input(prompt + suffix).strip().lower()
+    except EOFError:
+        # Non-interactive input (piped/redirected) - fall back to default
+        return default
 
     if not response:
         return default

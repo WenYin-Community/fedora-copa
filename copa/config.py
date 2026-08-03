@@ -99,22 +99,26 @@ class Config:
         try:
             with open(config_path, "rb") as f:
                 data = tomllib.load(f)
-
-            config = cls()
-            if "search" in data:
-                config.search = SearchConfig(**data["search"])
-            if "install" in data:
-                config.install = InstallConfig(**data["install"])
-            if "backend" in data:
-                config.backend = BackendConfig(**data["backend"])
-            if "ui" in data:
-                config.ui = UIConfig(**data["ui"])
-            if "risk" in data:
-                config.risk = RiskConfig(**data["risk"])
-
-            return config
-        except (OSError, tomllib.TOMLDecodeError, TypeError):
+        except (OSError, tomllib.TOMLDecodeError):
             return cls()
+
+        config = cls()
+        # Apply each section independently so one invalid section
+        # doesn't silently discard the rest of the configuration.
+        for key, section_cls in (
+            ("search", SearchConfig),
+            ("install", InstallConfig),
+            ("backend", BackendConfig),
+            ("ui", UIConfig),
+            ("risk", RiskConfig),
+        ):
+            if key in data:
+                try:
+                    setattr(config, key, section_cls(**data[key]))
+                except TypeError:
+                    continue
+
+        return config
 
     def save(self, path: Path | None = None) -> None:
         """Save configuration file"""

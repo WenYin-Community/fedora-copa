@@ -1,11 +1,20 @@
 """Copr backend - handles interaction with Copr API and copr-cli"""
 
+import sys
 from dataclasses import dataclass
 
 from copr.v3 import Client
-from copr.v3.exceptions import CoprException, CoprNoResultException
+from copr.v3.exceptions import CoprAuthException, CoprException, CoprNoResultException
 
-from copa.utils import retry
+
+def _warn_copr_api_error(exc: CoprException) -> None:
+    """Print a warning for transient Copr API/network errors.
+
+    HTTP 404 (CoprNoResultException) and 403 (CoprAuthException) are normal
+    outcomes (project missing / auth rejected) and are swallowed silently.
+    """
+    if not isinstance(exc, (CoprNoResultException, CoprAuthException)):
+        print(f"  Warning: Copr API error: {exc}", file=sys.stderr)
 
 
 @dataclass
@@ -23,8 +32,6 @@ class CoprPackage:
     """Copr package info"""
     name: str
     source_name: str
-    latest_version: str | None
-    latest_build_succeeded: bool
 
 
 @dataclass
@@ -43,8 +50,6 @@ class CoprBackend:
     def __init__(self):
         self.client = Client.create_from_config_file()
 
-    @retry(max_attempts=3, delay=1.0,
-           exceptions=(OSError,))
     def search_projects(self, query: str, limit: int = 20) -> list[CoprProject]:
         """Search Copr projects"""
         try:
@@ -64,11 +69,10 @@ class CoprBackend:
                     instructions=project.instructions or "",
                 ))
             return result
-        except CoprException:
+        except CoprException as exc:
+            _warn_copr_api_error(exc)
             return []
 
-    @retry(max_attempts=3, delay=1.0,
-           exceptions=(OSError,))
     def get_project(self, owner: str, name: str) -> CoprProject | None:
         """Get project details"""
         try:
@@ -85,7 +89,8 @@ class CoprBackend:
                 chroots=chroots,
                 instructions=project.instructions or "",
             )
-        except CoprNoResultException:
+        except CoprException as exc:
+            _warn_copr_api_error(exc)
             return None
 
     def list_packages(self, owner: str, project: str) -> list[CoprPackage]:
@@ -97,11 +102,10 @@ class CoprBackend:
                 result.append(CoprPackage(
                     name=pkg.name,
                     source_name=pkg.name,  # Usually the source package name
-                    latest_version=None,  # Requires additional query
-                    latest_build_succeeded=False,  # Requires additional query
                 ))
             return result
-        except CoprException:
+        except CoprException as exc:
+            _warn_copr_api_error(exc)
             return []
 
     def get_builds(
@@ -141,7 +145,8 @@ class CoprBackend:
                     ),
                 ))
             return result
-        except CoprException:
+        except CoprException as exc:
+            _warn_copr_api_error(exc)
             return []
 
     def check_package_exists(
@@ -154,7 +159,6 @@ class CoprBackend:
         try:
             self.client.package_proxy.get(owner, project, package_name)
             return True
-        except CoprNoResultException:
-            return False
-        except CoprException:
+        except CoprException as exc:
+            _warn_copr_api_error(exc)
             return False

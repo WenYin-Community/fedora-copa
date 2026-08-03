@@ -55,11 +55,18 @@ class AppState:
             state = cls()
             state.last_updated = data.get("last_updated", "")
 
+            # Skip individual malformed entries instead of discarding all state
             for repo_data in data.get("copr_repos", []):
-                state.copr_repos.append(CoprState(**repo_data))
+                try:
+                    state.copr_repos.append(CoprState(**repo_data))
+                except TypeError:
+                    continue
 
             for repo_data in data.get("obs_repos", []):
-                state.obs_repos.append(OBSState(**repo_data))
+                try:
+                    state.obs_repos.append(OBSState(**repo_data))
+                except TypeError:
+                    continue
 
             return state
         except (OSError, json.JSONDecodeError, TypeError, AttributeError):

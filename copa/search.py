@@ -125,13 +125,13 @@ class SearchEngine:
         # Support multi-keyword AND logic
         keywords = keyword.lower().split()
 
+        def matches_all_keywords(text: str) -> bool:
+            return all(kw in text for kw in keywords)
+
         for project in projects:
             # Filter: project name or owner must contain all keywords
             project_name_lower = project.name.lower()
             owner_lower = project.owner.lower()
-
-            def matches_all_keywords(text: str) -> bool:
-                return all(kw in text for kw in keywords)
 
             name_match = matches_all_keywords(project_name_lower)
             owner_match = matches_all_keywords(owner_lower)

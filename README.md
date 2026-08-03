@@ -84,7 +84,7 @@ OBS (openSUSE Build Service) requires authentication. To enable OBS support:
    pass = your_password
    ```
 
-Without OBS credentials, `copa install` will skip OBS search and only search Copr.
+Without OBS credentials, OBS search is skipped with a warning and `copa` falls back to Copr only.
 
 ### dnf5 / dnf Compatibility
 
@@ -512,13 +512,27 @@ enable_fedora = true
 enable_rpmfusion = true
 enable_terra_if_present = true
 enable_copr = true
+terra_repo_patterns = ["terra*"]
 
 [install]
 default_copr_post_action = "disable"
+default_chroot_auto_detect = true
+strict_selected_repo = true
+single_package_only = true
 
 [backend]
 prefer_dnf5 = true
 fallback_to_dnf = true
+require_copr_cli = true
+
+[ui]
+language = "auto"
+json = false
+
+[risk]
+block_mock_only = true
+block_do_not_use = true
+warn_experimental = true
 ```
 
 ## State File
@@ -559,13 +573,16 @@ pip install --user -e ".[dev]"
 
 # Run tests
 pytest
+make test
 
 # Lint
 ruff check .
 mypy copa/
+make lint
 
 # Build RPM
 make build
+make build-srpm   # downloads source tarball from GitHub Releases
 ```
 
 ## License

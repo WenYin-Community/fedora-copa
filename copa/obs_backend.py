@@ -60,19 +60,6 @@ class OBSPackage:
 
 
 @dataclass
-class OBSBinary:
-    """OBS binary package info"""
-    name: str
-    project: str
-    repository: str
-    arch: str
-    version: str
-    release: str
-    filename: str
-    url: str
-
-
-@dataclass
 class OBSRepo:
     """OBS repo info"""
     project: str
@@ -196,49 +183,17 @@ class OBSBackend:
         except (httpx.HTTPError, ET.ParseError):
             return []
 
-    def search_binaries(
-        self,
-        package_name: str,
-        repository: str | None = None,
-        limit: int = 20,
-    ) -> list[OBSBinary]:
-        """Search binary packages"""
-        package_literal = _xpath_string_literal(package_name)
-        match_parts = [f"name={package_literal}"]
-        if repository:
-            repo_literal = _xpath_string_literal(repository)
-            match_parts.append(f"repository={repo_literal}")
-
-        match = "+and+".join(match_parts)
-        try:
-            root = self._get("/search/released/binary", {"match": match})
-            binaries = []
-            for binary_elem in root.findall(".//binary")[:limit]:
-                binaries.append(OBSBinary(
-                    name=binary_elem.get("name", ""),
-                    project=binary_elem.get("project", ""),
-                    repository=binary_elem.get("repository", ""),
-                    arch=binary_elem.get("arch", ""),
-                    version=binary_elem.get("version", ""),
-                    release=binary_elem.get("release", ""),
-                    filename=binary_elem.get("filename", ""),
-                    url=binary_elem.get("url", ""),
-                ))
-            return binaries
-        except (httpx.HTTPError, ET.ParseError):
-            return []
-
     def get_project_repos(self, project: str) -> list[OBSRepo]:
         """Get project repo list"""
         try:
             root = self._get(f"/source/{project}/_meta")
+            repo_file_name = self._get_repo_file_name(project)
             repos = []
             for repo_elem in root.findall(".//repository"):
                 repo_name = repo_elem.get("name", "")
                 # Try to extract Fedora version from repo name
                 fedora_version = extract_fedora_version(repo_name)
                 repo_url = f"https://download.opensuse.org/repositories/{project}/{repo_name}"
-                repo_file_name = self._get_repo_file_name(project)
 
                 repos.append(OBSRepo(
                     project=project,
@@ -303,8 +258,6 @@ class OBSBackend:
                     "-o", str(repo_file_path),
                     repo_file_url
                 ],
-                capture_output=True,
-                text=True,
             )
             return result.returncode == 0
         except OSError:
@@ -319,8 +272,6 @@ class OBSBackend:
                     "sudo", "dnf", "config-manager",
                     "--set-disabled", repo_id
                 ],
-                capture_output=True,
-                text=True,
             )
             return result.returncode == 0
         except OSError:
@@ -342,8 +293,6 @@ class OBSBackend:
             # rm -f succeeds even if file doesn't exist
             result = subprocess.run(
                 ["sudo", "rm", "-f"] + [str(p) for p in paths],
-                capture_output=True,
-                text=True,
             )
             return result.returncode == 0
         except OSError:

@@ -84,7 +84,7 @@ OBS（openSUSE Build Service）需要认证才能使用。启用 OBS 支持：
    pass = 你的密码
    ```
 
-未配置 OBS 凭证时，`copa install` 会跳过 OBS 搜索，仅搜索 Copr。
+未配置 OBS 凭证时，OBS 搜索会被跳过并显示提示，`copa` 仅回退搜索 Copr。
 
 ### dnf5 / dnf 兼容性
 
@@ -512,13 +512,27 @@ enable_fedora = true
 enable_rpmfusion = true
 enable_terra_if_present = true
 enable_copr = true
+terra_repo_patterns = ["terra*"]
 
 [install]
 default_copr_post_action = "disable"
+default_chroot_auto_detect = true
+strict_selected_repo = true
+single_package_only = true
 
 [backend]
 prefer_dnf5 = true
 fallback_to_dnf = true
+require_copr_cli = true
+
+[ui]
+language = "auto"
+json = false
+
+[risk]
+block_mock_only = true
+block_do_not_use = true
+warn_experimental = true
 ```
 
 ## 状态文件
@@ -559,13 +573,16 @@ pip install --user -e ".[dev]"
 
 # 运行测试
 pytest
+make test
 
 # 代码检查
 ruff check .
 mypy copa/
+make lint
 
 # 构建 RPM
 make build
+make build-srpm   # 从 GitHub Releases 下载源码包
 ```
 
 ## 许可证

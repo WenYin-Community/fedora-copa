@@ -442,7 +442,7 @@ def cmd_search(args: argparse.Namespace) -> int:
     )
     if search_obs:
         if not engine.obs.is_available():
-            if args.obs_only and not use_json:
+            if not use_json:
                 print(f"{YELLOW}OBS is unavailable, skipping.{RESET}")
         else:
             if not use_json:
@@ -469,8 +469,6 @@ def cmd_search(args: argparse.Namespace) -> int:
     if use_json:
         print(json.dumps(all_results, indent=2, ensure_ascii=False))
         return 0
-
-    return 0
 
     return 0
 
@@ -1161,12 +1159,9 @@ def cmd_list(args: argparse.Namespace) -> int:
         for pkg in packages:
             result_data["packages"].append({
                 "name": pkg.name,
-                "latest_version": pkg.latest_version,
             })
             if not use_json:
                 print(f"  {pkg.name}")
-                if pkg.latest_version:
-                    print(f"    Latest: {pkg.latest_version}")
 
         if not packages and not use_json:
             print("  No packages found or project does not exist")
