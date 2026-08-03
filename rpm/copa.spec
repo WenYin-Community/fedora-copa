@@ -1,5 +1,5 @@
 Name:           fedora-copa
-Version:        0.9.5.1
+Version:        0.9.6
 Release:        1%{?dist}
 Summary:        DNF5-style Fedora Copr Package Assistant
 
@@ -75,6 +75,13 @@ install -Dm644 completions/_copa %{buildroot}%{_datadir}/zsh/site-functions/_cop
 %config(noreplace) %{_sysconfdir}/copa/config.toml
 
 %changelog
+* Mon Aug 03 2026 copa contributors <copa@example.com> - 0.9.6-1
+- Robustness fixes: EOFError handling in confirm(), per-section config tolerance, per-entry state tolerance
+- Copr backend: drop ineffective retry decorator, unified API error handling (404/403 silent, network errors warn)
+- OBS backend: sudo commands show password prompt (capture_output=False); remove dead search_binaries
+- CLI: remove dead code; OBS unavailability now warns instead of silent skip
+- Tests: +44 covering risk assessment, version fallback, install flow, Copr backend error handling
+
 * Wed Jun 04 2025 copa contributors <copa@example.com> - 0.9.5.1-1
 - Fix missing shell completions and man page in RPM package
 
