@@ -2,7 +2,7 @@
 
 import argparse
 import sys
-from concurrent.futures import ThreadPoolExecutor, TimeoutError, as_completed
+from concurrent.futures import ThreadPoolExecutor, wait
 from typing import TYPE_CHECKING, Any
 
 from copa import __app_name__, __version__
@@ -32,6 +32,79 @@ def _obs_project_exists_in_system(project: str, repo_ids: set[str]) -> bool:
     """Check whether OBS project already exists in system repo ids."""
     normalized = project.replace(":", "_").replace("/", "_")
     return project in repo_ids or normalized in repo_ids
+
+
+def _make_dnf(args: argparse.Namespace) -> Any:
+    """Build a DnfBackend honoring backend configuration."""
+    from copa.dnf_backend import DnfBackend
+
+    return DnfBackend(
+        prefer_dnf5=args.config.backend.prefer_dnf5,
+        fallback_to_dnf=args.config.backend.fallback_to_dnf,
+    )
+
+
+def _search_local_repos(
+    dnf: Any,
+    keyword: str,
+    enabled_repos: dict[str, list[str]],
+    args: argparse.Namespace,
+    config: Any,
+    verbose: bool = False,
+) -> list[tuple[str, Any]]:
+    """Search Fedora/RPM Fusion/Terra repos, returning deduplicated (source, pkg) pairs.
+
+    CLI flags (--official-only / --rpmfusion-only / --include-local-repo)
+    take precedence over the corresponding config switches.
+    """
+    results: list[tuple[str, Any]] = []
+    search_local = args.include_local_repo or args.official_only or args.rpmfusion_only
+    if not search_local or args.copr_only or args.obs_only:
+        return results
+
+    # Fedora official repos
+    if not args.rpmfusion_only and (args.official_only or config.search.enable_fedora):
+        if verbose:
+            print("Searching Fedora official repos...")
+        for pkg in dnf.search_in_repos(keyword, enabled_repos["fedora"]):
+            results.append(("Fedora", pkg))
+
+    # RPM Fusion
+    if (
+        not args.official_only
+        and (args.rpmfusion_only or config.search.enable_rpmfusion)
+        and enabled_repos["rpmfusion"]
+    ):
+        if verbose:
+            print("Searching RPM Fusion...")
+        for pkg in dnf.search_in_repos(keyword, enabled_repos["rpmfusion"]):
+            results.append(("RPM Fusion", pkg))
+
+    # Terra
+    if (
+        args.include_local_repo
+        and not args.official_only
+        and not args.rpmfusion_only
+        and config.search.enable_terra_if_present
+        and enabled_repos["terra"]
+    ):
+        if verbose:
+            print("Searching Terra...")
+        for pkg in dnf.search_in_repos(keyword, enabled_repos["terra"]):
+            results.append(("Terra", pkg))
+
+    # Deduplicate by package name (first source wins)
+    seen: set[str] = set()
+    unique: list[tuple[str, Any]] = []
+    for source, pkg in results:
+        if pkg.name not in seen:
+            seen.add(pkg.name)
+            unique.append((source, pkg))
+    return unique
+
+
+_json_parser = argparse.ArgumentParser(add_help=False)
+_json_parser.add_argument("--json", action="store_true", help="JSON output")
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -148,7 +221,7 @@ def create_parser() -> argparse.ArgumentParser:
 
     # info command
     info_parser = subparsers.add_parser(
-        "info", help="Show package info"
+        "info", help="Show package info", parents=[_json_parser]
     )
     info_parser.add_argument(
         "package", help="Package name or owner/project"
@@ -156,7 +229,7 @@ def create_parser() -> argparse.ArgumentParser:
 
     # list command
     list_parser = subparsers.add_parser(
-        "list", help="List packages"
+        "list", help="List packages", parents=[_json_parser]
     )
     list_parser.add_argument(
         "--packages", metavar="OWNER/PROJECT",
@@ -200,7 +273,7 @@ def create_parser() -> argparse.ArgumentParser:
 
     # repoquery command
     repoquery_parser = subparsers.add_parser(
-        "repoquery", help="Query package dependencies"
+        "repoquery", help="Query package dependencies", parents=[_json_parser]
     )
     repoquery_parser.add_argument(
         "package", help="Package name to query"
@@ -220,7 +293,7 @@ def create_parser() -> argparse.ArgumentParser:
 
     # provides command
     provides_parser = subparsers.add_parser(
-        "provides", help="Find packages providing a file"
+        "provides", help="Find packages providing a file", parents=[_json_parser]
     )
     provides_parser.add_argument(
         "file", help="File path or command name"
@@ -257,7 +330,6 @@ def cmd_search(args: argparse.Namespace) -> int:
     import re
 
     from copa.copr_backend import CoprBackend
-    from copa.dnf_backend import DnfBackend
     from copa.search import SearchEngine
 
     keywords = [k.lower() for k in args.keyword]
@@ -281,13 +353,14 @@ def cmd_search(args: argparse.Namespace) -> int:
                 return 1
 
     # Initialize backends
-    dnf = DnfBackend()
+    dnf = _make_dnf(args)
     copr = CoprBackend()
-    engine = SearchEngine(dnf=dnf, copr=copr)
+    engine = SearchEngine(dnf=dnf, copr=copr, risk=args.config.risk)
 
     # Get enabled repos
-    enabled_repos = dnf.get_enabled_repos()
-    search_local = args.include_local_repo or args.official_only or args.rpmfusion_only
+    enabled_repos = dnf.get_enabled_repos(
+        terra_patterns=args.config.search.terra_repo_patterns
+    )
 
     # Collect all results
     all_results: dict[str, Any] = {
@@ -312,96 +385,46 @@ def cmd_search(args: argparse.Namespace) -> int:
             print("  (RPM Fusion, Terra, Copr, OBS) are built by third parties.")
             print(f"  Please verify the risks before installation.{RESET}\n")
 
-    # Search Fedora official repos
-    if search_local and not args.copr_only and not args.rpmfusion_only and not args.obs_only:
-        if not use_json:
-            print("Searching Fedora official repos...")
-        fedora_results = dnf.search_in_repos(search_query, enabled_repos["fedora"])
-        # Regex mode: match package names only
-        if use_regex:
-            fedora_results = _filter_by_regex(fedora_results, regex_patterns)
-        else:
-            fedora_results = _filter_by_keywords(fedora_results, keywords, match_desc=False)
-        for pkg in fedora_results[:10]:
-            all_results["fedora"].append({
-                "name": pkg.name,
-                "evr": pkg.evr,
-                "arch": pkg.arch,
-                "repo": pkg.repo,
-                "summary": pkg.summary,
-            })
-        if not use_json and fedora_results:
-            print(f"  Found {len(fedora_results)} results:")
-            for pkg in fedora_results[:5]:
-                print(f"    {pkg.name}-{pkg.evr} ({pkg.repo})")
-                print(f"      {pkg.summary}")
-            print()
-
-    # Search RPM Fusion
-    if (
-        search_local
-        and not args.official_only
-        and not args.copr_only
-        and not args.obs_only
-        and enabled_repos["rpmfusion"]
+    # Search Fedora official repos / RPM Fusion / Terra (local repos)
+    local_results = _search_local_repos(
+        dnf, search_query, enabled_repos, args, args.config
+    )
+    for source_label, json_key in (
+        ("Fedora", "fedora"),
+        ("RPM Fusion", "rpmfusion"),
+        ("Terra", "terra"),
     ):
-        if not use_json:
-            print("Searching RPM Fusion...")
-        rpmfusion_results = dnf.search_in_repos(search_query, enabled_repos["rpmfusion"])
+        packages = [pkg for src, pkg in local_results if src == source_label]
         if use_regex:
-            rpmfusion_results = _filter_by_regex(rpmfusion_results, regex_patterns)
+            packages = _filter_by_regex(packages, regex_patterns)
         else:
-            rpmfusion_results = _filter_by_keywords(rpmfusion_results, keywords, match_desc=False)
-        for pkg in rpmfusion_results[:10]:
-            all_results["rpmfusion"].append({
+            packages = _filter_by_keywords(packages, keywords, match_desc=False)
+        if not packages:
+            continue
+        if not use_json:
+            print(f"Searching {source_label}...")
+            print(f"  Found {len(packages)} results:")
+            for pkg in packages[:5]:
+                print(f"    {pkg.name}-{pkg.evr} ({pkg.repo})")
+                print(f"      {pkg.summary}")
+            print()
+        for pkg in packages[:10]:
+            all_results[json_key].append({
                 "name": pkg.name,
                 "evr": pkg.evr,
                 "arch": pkg.arch,
                 "repo": pkg.repo,
                 "summary": pkg.summary,
             })
-        if not use_json and rpmfusion_results:
-            print(f"  Found {len(rpmfusion_results)} results:")
-            for pkg in rpmfusion_results[:5]:
-                print(f"    {pkg.name}-{pkg.evr} ({pkg.repo})")
-                print(f"      {pkg.summary}")
-            print()
-
-    # Search Terra
-    if (
-        args.include_local_repo
-        and not args.official_only
-        and not args.rpmfusion_only
-        and not args.copr_only
-        and not args.obs_only
-        and enabled_repos["terra"]
-    ):
-        if not use_json:
-            print("Searching Terra...")
-        terra_results = dnf.search_in_repos(search_query, enabled_repos["terra"])
-        if use_regex:
-            terra_results = _filter_by_regex(terra_results, regex_patterns)
-        else:
-            terra_results = _filter_by_keywords(terra_results, keywords, match_desc=False)
-        for pkg in terra_results[:10]:
-            all_results["terra"].append({
-                "name": pkg.name,
-                "evr": pkg.evr,
-                "arch": pkg.arch,
-                "repo": pkg.repo,
-                "summary": pkg.summary,
-            })
-        if not use_json and terra_results:
-            print(f"  Found {len(terra_results)} results:")
-            for pkg in terra_results[:5]:
-                print(f"    {pkg.name}-{pkg.evr} ({pkg.repo})")
-                print(f"      {pkg.summary}")
-            print()
 
     # Search Copr
     search_third_party = not args.official_only and not args.rpmfusion_only
     fedora_version = dnf.get_fedora_version() if search_third_party else 0
-    if search_third_party and not args.obs_only:
+    if (
+        search_third_party
+        and not args.obs_only
+        and (args.copr_only or args.config.search.enable_copr)
+    ):
         if not use_json:
             print("Searching Copr repos...")
         chroot = dnf.get_chroot()
@@ -532,20 +555,21 @@ def _filter_copr_by_regex(
 def cmd_install(args: argparse.Namespace) -> int:
     """install command implementation"""
     from copa.copr_backend import CoprBackend
-    from copa.dnf_backend import DnfBackend
     from copa.obs_backend import OBSBackend
     from copa.search import SearchEngine
     from copa.state import AppState
 
     package = args.package
-    dnf = DnfBackend()
+    dnf = _make_dnf(args)
     copr = CoprBackend()
     with OBSBackend() as obs:
-        engine = SearchEngine(dnf=dnf, copr=copr, obs=obs)
+        engine = SearchEngine(dnf=dnf, copr=copr, obs=obs, risk=args.config.risk)
         state = AppState.load()
 
         # Get enabled repos
-        enabled_repos = dnf.get_enabled_repos()
+        enabled_repos = dnf.get_enabled_repos(
+            terra_patterns=args.config.search.terra_repo_patterns
+        )
         fedora_version = dnf.get_fedora_version()
 
         print(f"Installing: {package}\n")
@@ -562,52 +586,28 @@ def cmd_install(args: argparse.Namespace) -> int:
             print(f"  1. Search {package} in Copr/OBS")
             if args.include_local_repo:
                 print("     Also search: Fedora/RPM Fusion/Terra")
-            print(f"  2. If found: sudo dnf5 install {package}")
+            print(f"  2. If found: sudo {dnf.binary} install {package}")
             print("  3. If from Copr/OBS, ask whether to keep repo")
             return 0
 
         # Steps 1-3: Search Fedora/RPM Fusion/Terra (only when explicitly requested)
         search_local = args.include_local_repo or args.official_only or args.rpmfusion_only
         if search_local and not args.copr_only and not args.obs_only:
-            local_results: list[tuple[str, Any]] = []
-
-            # Search Fedora
-            if not args.rpmfusion_only:
-                print("Searching Fedora official repos...")
-                for pkg in dnf.search_in_repos(package, enabled_repos["fedora"]):
-                    local_results.append(("Fedora", pkg))
-
-            # Search RPM Fusion
-            if not args.official_only and enabled_repos["rpmfusion"]:
-                print("Searching RPM Fusion...")
-                for pkg in dnf.search_in_repos(package, enabled_repos["rpmfusion"]):
-                    local_results.append(("RPM Fusion", pkg))
-
-            # Search Terra
-            if not args.official_only and enabled_repos["terra"]:
-                print("Searching Terra...")
-                for pkg in dnf.search_in_repos(package, enabled_repos["terra"]):
-                    local_results.append(("Terra", pkg))
+            local_results = _search_local_repos(
+                dnf, package, enabled_repos, args, args.config, verbose=True
+            )
 
             if local_results:
-                # Deduplicate by name
-                seen: set[str] = set()
-                unique_local: list[tuple[str, Any]] = []
-                for source, pkg in local_results:
-                    if pkg.name not in seen:
-                        seen.add(pkg.name)
-                        unique_local.append((source, pkg))
-
-                print(f"\nFound {len(unique_local)} package(s) in local repos:\n")
-                for i, (source, pkg) in enumerate(unique_local, 1):
+                print(f"\nFound {len(local_results)} package(s) in local repos:\n")
+                for i, (source, pkg) in enumerate(local_results, 1):
                     print(f"  [{i:2d}] {pkg.name}-{pkg.evr} ({source})")
                     if pkg.summary:
                         print(f"       {pkg.summary}")
 
                 if args.assumeyes:
-                    target_name = unique_local[0][1].name
+                    target_name = local_results[0][1].name
                     print(f"\n  Auto-selected: {target_name}")
-                    print(f"\nExecuting: sudo dnf5 install {target_name}")
+                    print(f"\nExecuting: sudo {dnf.binary} install {target_name}")
                     if dnf.install(target_name):
                         print("Installation successful!")
                     else:
@@ -615,7 +615,7 @@ def cmd_install(args: argparse.Namespace) -> int:
                     return 0
 
                 choice = input(
-                    f"{BOLD}\nSelect [1-{len(unique_local)}], "
+                    f"{BOLD}\nSelect [1-{len(local_results)}], "
                     f"'s' to search Copr/OBS, 'q' to cancel: {RESET}"
                 ).strip().lower()
                 if choice in ("q", "quit"):
@@ -625,9 +625,9 @@ def cmd_install(args: argparse.Namespace) -> int:
                 else:
                     try:
                         idx = int(choice)
-                        if 1 <= idx <= len(unique_local):
-                            target_name = unique_local[idx - 1][1].name
-                            print(f"\nExecuting: sudo dnf5 install {target_name}")
+                        if 1 <= idx <= len(local_results):
+                            target_name = local_results[idx - 1][1].name
+                            print(f"\nExecuting: sudo {dnf.binary} install {target_name}")
                             if dnf.install(target_name):
                                 print("Installation successful!")
                             else:
@@ -643,7 +643,9 @@ def cmd_install(args: argparse.Namespace) -> int:
             all_sources: list[tuple[str, Any]] = []
 
             # Search Copr and OBS in parallel
-            search_copr = not args.obs_only
+            search_copr = not args.obs_only and (
+                args.copr_only or args.config.search.enable_copr
+            )
             search_obs = not args.no_obs and not args.copr_only
 
             # Check OBS auth before searching
@@ -659,10 +661,12 @@ def cmd_install(args: argparse.Namespace) -> int:
                         engine.search_copr, package, chroot, fedora_version,
                     )
                     future_obs = pool.submit(engine.search_obs, package, fedora_version)
-                    for future in as_completed([future_copr, future_obs]):  # type: ignore[var-annotated, arg-type]
+                    futures: list[Any] = [future_copr, future_obs]
+                    done, pending = wait(futures, timeout=60)
+                    for future in done:
                         try:
-                            results = future.result(timeout=60)
-                        except TimeoutError:
+                            results = future.result()
+                        except Exception:
                             results = []
                         if future is future_copr:
                             for r in results[:10]:
@@ -670,6 +674,13 @@ def cmd_install(args: argparse.Namespace) -> int:
                         else:
                             for r in results[:10]:
                                 all_sources.append(("obs", r))
+                    for future in pending:
+                        future.cancel()
+                        source_name = "Copr" if future is future_copr else "OBS"
+                        print(
+                            f"{YELLOW}Warning: {source_name} search timed out (60s),"
+                            f" results may be incomplete{RESET}"
+                        )
             else:
                 if search_copr:
                     print("Searching Copr repos...")
@@ -704,12 +715,27 @@ def cmd_install(args: argparse.Namespace) -> int:
                         print(f"       Version: {version_status} | Risk: {data.risk_level}")
 
                 # User selection
+                selected_source: str | None = None
+                selected: Any = None
                 if args.assumeyes and not args.copr:
-                    print(
-                        f"\n{RED}Error: --copr OWNER/PROJECT required"
-                        f" in non-interactive mode{RESET}"
-                    )
-                    return 1
+                    if len(all_sources) == 1:
+                        selected_source, selected = all_sources[0]
+                        if selected_source == "copr":
+                            print(
+                                f"\n  Auto-selected: [Copr] "
+                                f"{selected.project.owner}/{selected.project.name}"
+                            )
+                        else:
+                            print(
+                                f"\n  Auto-selected: [OBS] "
+                                f"{selected.package.project}/{selected.package.name}"
+                            )
+                    else:
+                        print(
+                            f"\n{RED}Error: --copr OWNER/PROJECT required"
+                            f" in non-interactive mode (or narrow results to one){RESET}"
+                        )
+                        return 1
 
                 if args.copr:
                     # Use specified Copr
@@ -718,8 +744,6 @@ def cmd_install(args: argparse.Namespace) -> int:
                         print(f"\n{RED}Error: Invalid --copr format, expected OWNER/PROJECT{RESET}")
                         return 1
                     owner, project = parsed_copr
-                    selected = None
-                    selected_source = None
                     for source, data in all_sources:
                         if (source == "copr"
                                 and data.project.owner == owner
@@ -914,9 +938,9 @@ def _install_from_copr(
             return 1
     else:
         print("[dry-run] Will execute:")
-        print(f"  sudo dnf5 copr enable {owner_project} {use_chroot}")
-        print("  sudo dnf5 makecache --refresh")
-        print(f"  sudo dnf5 install {package}")
+        print(f"  sudo {dnf.binary} copr enable {owner_project} {use_chroot}")
+        print(f"  sudo {dnf.binary} makecache --refresh")
+        print(f"  sudo {dnf.binary} install {package}")
 
     return 0
 
@@ -1021,8 +1045,8 @@ def _install_from_obs(
                 selected.best_repo.repository
             )
             print(f"  Download repo: {repo_url}")
-            print("  sudo dnf5 makecache --refresh")
-            print(f"  sudo dnf5 install {package}")
+            print(f"  sudo {dnf.binary} makecache --refresh")
+            print(f"  sudo {dnf.binary} install {package}")
 
     return 0
 
@@ -1032,11 +1056,10 @@ def cmd_info(args: argparse.Namespace) -> int:
     import json
 
     from copa.copr_backend import CoprBackend
-    from copa.dnf_backend import DnfBackend
 
     package = args.package
     use_json = args.json
-    dnf = DnfBackend()
+    dnf = _make_dnf(args)
     copr = CoprBackend()
 
     result_data: dict[str, Any] = {
@@ -1080,7 +1103,9 @@ def cmd_info(args: argparse.Namespace) -> int:
             print(f"Package: {package}\n")
             print("Searching in enabled repos...")
 
-        enabled_repos = dnf.get_enabled_repos()
+        enabled_repos = dnf.get_enabled_repos(
+            terra_patterns=args.config.search.terra_repo_patterns
+        )
         all_repo_ids = (
             enabled_repos["fedora"]
             + enabled_repos["rpmfusion"]
@@ -1211,11 +1236,10 @@ def cmd_list(args: argparse.Namespace) -> int:
 
 def cmd_repo(args: argparse.Namespace) -> int:
     """repo subcommand implementation - manage Copr and OBS repos"""
-    from copa.dnf_backend import DnfBackend
     from copa.obs_backend import OBSBackend
     from copa.state import AppState
 
-    dnf = DnfBackend()
+    dnf = _make_dnf(args)
     with OBSBackend() as obs:
         state = AppState.load()
 
@@ -1250,12 +1274,12 @@ def cmd_repo(args: argparse.Namespace) -> int:
                         print(f"  copr:{repo.id} [{status}] [system]")
 
                 # Copr repos managed by copa (not in system list)
+                system_copr_ids = {r.id for r in copr_all}
                 for copr_repo in state.copr_repos:
-                    copr_repo_id = (
-                        f"copr:copr.fedorainfracloud.org:"
-                        f"{copr_repo.owner}:{copr_repo.project}"
-                    )
-                    if copr_repo_id not in {r.id for r in copr_all}:
+                    if not any(
+                        repo_id.endswith(f":{copr_repo.owner}:{copr_repo.project}")
+                        for repo_id in system_copr_ids
+                    ):
                         print(f"  copr:{copr_repo.owner}/{copr_repo.project} [enabled] [copa]")
                         if copr_repo.chroot:
                             print(f"    Chroot: {copr_repo.chroot}")
@@ -1491,7 +1515,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         status = "✓" if ok else "✗"
         detail_str = f" ({detail})" if detail else ""
         print(f"  {status} {name}{detail_str}")
-        if not ok and name not in ["dnf"]:
+        if not ok and name not in ["dnf", "copr-cli"]:
             all_ok = False
 
     print()
@@ -1500,8 +1524,8 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         return 1
 
     if not copr_cli_exists:
-        print("Warning: copr-cli not installed, Copr search will be unavailable")
-        print("  Install: sudo dnf install copr-cli")
+        print("Note: copr-cli not installed (only needed for publishing packages to Copr)")
+        print("  Copr search uses the python-copr API; enabling repos uses the dnf5 copr plugin")
 
     if is_ostree:
         print("Warning: rpm-ostree system detected, copa does not support Atomic desktops yet")
@@ -1520,10 +1544,10 @@ def cmd_audit(args: argparse.Namespace) -> int:
     from datetime import datetime
 
     from copa.copr_backend import CoprBackend
-    from copa.dnf_backend import DnfBackend
+    from copa.search import BLOCK_WORDS, MEDIUM_WORDS
     from copa.state import AppState
 
-    dnf = DnfBackend()
+    dnf = _make_dnf(args)
     copr = CoprBackend()
     state = AppState.load()
     fedora_version = dnf.get_fedora_version()
@@ -1587,10 +1611,9 @@ def cmd_audit(args: argparse.Namespace) -> int:
             else:
                 print("    No builds found")
 
-            # Check risk words
+            # Check risk words (shared with search risk assessment)
             desc_lower = (project_info.description or "").lower()
-            risk_words = ["testing", "experimental", "do not use", "mock only"]
-            for word in risk_words:
+            for word in BLOCK_WORDS + MEDIUM_WORDS:
                 if word in desc_lower:
                     issues.append(f"Copr {repo.owner}/{repo.project}: Contains risk word '{word}'")
                     print(f"    WARNING: Contains risk word '{word}'")
@@ -1633,10 +1656,8 @@ def cmd_audit(args: argparse.Namespace) -> int:
 
 def cmd_remove(args: argparse.Namespace) -> int:
     """remove command - uninstall a locally installed package"""
-    from copa.dnf_backend import DnfBackend
-
     package = args.package
-    dnf = DnfBackend()
+    dnf = _make_dnf(args)
 
     # Search installed packages matching input
     found = dnf.search_installed(package)
@@ -1711,10 +1732,8 @@ def cmd_repoquery(args: argparse.Namespace) -> int:
     """repoquery command implementation - query package dependencies"""
     import json
 
-    from copa.dnf_backend import DnfBackend
-
     package = args.package
-    dnf = DnfBackend()
+    dnf = _make_dnf(args)
     use_json = args.json
 
     result_data = {
@@ -1726,11 +1745,7 @@ def cmd_repoquery(args: argparse.Namespace) -> int:
     if args.requires:
         # Query package dependencies
         result_data["type"] = "requires"
-        result = dnf._run(["repoquery", "--requires", package])
-        if result.returncode == 0:
-            for line in result.stdout.strip().split("\n"):
-                if line.strip():
-                    result_data["items"].append(line.strip())
+        result_data["items"] = dnf.query_requires(package)
         if not use_json:
             print(f"Querying package: {package}\n")
             print("Dependencies:")
@@ -1743,11 +1758,7 @@ def cmd_repoquery(args: argparse.Namespace) -> int:
     elif args.provides:
         # Query what package provides
         result_data["type"] = "provides"
-        result = dnf._run(["repoquery", "--provides", package])
-        if result.returncode == 0:
-            for line in result.stdout.strip().split("\n"):
-                if line.strip():
-                    result_data["items"].append(line.strip())
+        result_data["items"] = dnf.query_provides(package)
         if not use_json:
             print(f"Querying package: {package}\n")
             print("Provides:")
@@ -1760,11 +1771,7 @@ def cmd_repoquery(args: argparse.Namespace) -> int:
     elif args.files:
         # Query package files
         result_data["type"] = "files"
-        result = dnf._run(["repoquery", "--list", package])
-        if result.returncode == 0:
-            for line in result.stdout.strip().split("\n"):
-                if line.strip():
-                    result_data["items"].append(line.strip())
+        result_data["items"] = dnf.query_files(package)
         if not use_json:
             print(f"Querying package: {package}\n")
             print("Files:")
@@ -1777,13 +1784,13 @@ def cmd_repoquery(args: argparse.Namespace) -> int:
     else:
         # Display package info by default
         result_data["type"] = "info"
-        result = dnf._run(["repoquery", "--info", package])
-        if result.returncode == 0:
-            result_data["info"] = result.stdout.strip()
+        info = dnf.query_info(package)
+        if info:
+            result_data["info"] = info.strip()
             if not use_json:
                 print(f"Querying package: {package}\n")
                 print("Package info:")
-                print(result.stdout)
+                print(info)
         else:
             if not use_json:
                 print(f"Querying package: {package}\n")
@@ -1800,10 +1807,8 @@ def cmd_provides(args: argparse.Namespace) -> int:
     """provides command implementation - find packages providing a file"""
     import json
 
-    from copa.dnf_backend import DnfBackend
-
     file_path = args.file
-    dnf = DnfBackend()
+    dnf = _make_dnf(args)
     use_json = args.json
 
     result_data = {
@@ -1811,18 +1816,14 @@ def cmd_provides(args: argparse.Namespace) -> int:
         "providers": [],
     }
 
-    # Use dnf5 provides command
-    result = dnf._run(["provides", file_path])
+    result_data["providers"] = dnf.search_providers(file_path)
 
-    if result.returncode == 0 and result.stdout.strip():
-        # Parse output
-        for line in result.stdout.strip().split("\n"):
-            if line.strip():
-                result_data["providers"].append(line.strip())
+    if result_data["providers"]:
         if not use_json:
             print(f"Finding packages providing: {file_path}\n")
             print("Found in repositories:")
-            print(result.stdout)
+            for line in result_data["providers"]:
+                print(f"  {line}")
     else:
         if not use_json:
             print(f"Finding packages providing: {file_path}\n")
@@ -1860,6 +1861,8 @@ def main(argv: list[str] | None = None) -> int:
 
     # Pass config to command
     args.config = config
+    if config.ui.json and not args.json:
+        args.json = True
 
     commands = {
         "search": cmd_search,

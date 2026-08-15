@@ -1,5 +1,5 @@
 Name:           fedora-copa
-Version:        0.9.6
+Version:        0.9.8
 Release:        1%{?dist}
 Summary:        DNF5-style Fedora Copr Package Assistant
 
@@ -20,9 +20,7 @@ BuildRequires:  python3-httpx
 Requires:       python3 >= 3.11
 Requires:       python3-copr
 Requires:       python3-httpx
-Requires:       dnf5
-Requires:       copr-cli
-Requires:       osc
+Requires:       (dnf5 or dnf)
 
 %description
 copa is a Copr package assistant for the Fedora / DNF5 ecosystem, providing
@@ -75,6 +73,21 @@ install -Dm644 completions/_copa %{buildroot}%{_datadir}/zsh/site-functions/_cop
 %config(noreplace) %{_sysconfdir}/copa/config.toml
 
 %changelog
+* Sun Aug 16 2026 copa contributors <copa@example.com> - 0.9.8-1
+- Config is now fully wired: search source switches, dnf binary preference,
+  risk blocking, and default JSON output take effect; unimplemented options removed
+- Risk: "experimental" projects now warn (medium) instead of being blocked;
+  risk keyword lists shared between search and audit
+- CLI: --json accepted after info/list/repoquery/provides subcommands;
+  deduplicated local-repo search logic; -y auto-selects a single third-party result
+- Backend: rawhide OBS repo matching, glob escaping for keywords,
+  public repoquery/provides methods replace private _run calls
+- State: atomic state.json writes (temp file + rename)
+- CI: version-consistency check across pyproject.toml/__init__.py/spec,
+  git archive for release tarballs, concurrency guard, gh-release v2
+- Packaging: runtime deps slimmed to (dnf5 or dnf); copr-cli and osc no longer required
+- Tests: +15 covering config wiring, risk flags, rawhide OBS, glob escaping, cmd_search/cmd_remove
+
 * Mon Aug 03 2026 copa contributors <copa@example.com> - 0.9.6-1
 - Robustness fixes: EOFError handling in confirm(), per-section config tolerance, per-entry state tolerance
 - Copr backend: drop ineffective retry decorator, unified API error handling (404/403 silent, network errors warn)

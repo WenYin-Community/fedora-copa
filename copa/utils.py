@@ -9,15 +9,20 @@ def check_command_exists(command: str) -> bool:
     return shutil.which(command) is not None
 
 
-def get_dnf_binary() -> str:
-    """Get available dnf binary"""
-    if check_command_exists("dnf5"):
-        return "dnf5"
-    elif check_command_exists("dnf"):
-        return "dnf"
-    else:
-        print("Error: dnf5 or dnf not found", file=sys.stderr)
-        sys.exit(1)
+def get_dnf_binary(
+    prefer_dnf5: bool = True, fallback_to_dnf: bool = True
+) -> str:
+    """Get available dnf binary, honoring backend preferences."""
+    candidates = (["dnf5", "dnf"] if prefer_dnf5 else ["dnf", "dnf5"])
+    if not fallback_to_dnf:
+        candidates = candidates[:1]
+
+    for command in candidates:
+        if check_command_exists(command):
+            return command
+
+    print("Error: dnf5 or dnf not found", file=sys.stderr)
+    sys.exit(1)
 
 
 def confirm(prompt: str, default: bool = False) -> bool:

@@ -15,6 +15,7 @@ class MockDnf:
         self.enable_ok = enable_ok
         self.search_results = search_results
         self.calls = []
+        self.binary = "dnf5"
 
     def get_fedora_version(self):
         return 44

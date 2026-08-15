@@ -1,5 +1,6 @@
 """Configuration management"""
 
+import dataclasses
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -16,17 +17,12 @@ DEFAULT_CONFIG = {
     },
     "install": {
         "default_copr_post_action": "disable",
-        "default_chroot_auto_detect": True,
-        "strict_selected_repo": True,
-        "single_package_only": True,
     },
     "backend": {
         "prefer_dnf5": True,
         "fallback_to_dnf": True,
-        "require_copr_cli": True,
     },
     "ui": {
-        "language": "auto",
         "json": False,
     },
     "risk": {
@@ -51,9 +47,6 @@ class SearchConfig:
 class InstallConfig:
     """Install configuration"""
     default_copr_post_action: str = "disable"
-    default_chroot_auto_detect: bool = True
-    strict_selected_repo: bool = True
-    single_package_only: bool = True
 
 
 @dataclass
@@ -61,13 +54,11 @@ class BackendConfig:
     """Backend configuration"""
     prefer_dnf5: bool = True
     fallback_to_dnf: bool = True
-    require_copr_cli: bool = True
 
 
 @dataclass
 class UIConfig:
     """UI configuration"""
-    language: str = "auto"
     json: bool = False
 
 
@@ -105,6 +96,8 @@ class Config:
         config = cls()
         # Apply each section independently so one invalid section
         # doesn't silently discard the rest of the configuration.
+        # Unknown keys are dropped so older configs with removed
+        # options still load their remaining settings.
         for key, section_cls in (
             ("search", SearchConfig),
             ("install", InstallConfig),
@@ -112,11 +105,14 @@ class Config:
             ("ui", UIConfig),
             ("risk", RiskConfig),
         ):
-            if key in data:
-                try:
-                    setattr(config, key, section_cls(**data[key]))
-                except TypeError:
-                    continue
+            if key not in data:
+                continue
+            try:
+                known = {f.name for f in dataclasses.fields(section_cls)}
+                kwargs = {k: v for k, v in data[key].items() if k in known}
+                setattr(config, key, section_cls(**kwargs))
+            except TypeError:
+                continue
 
         return config
 
@@ -156,18 +152,6 @@ class Config:
             f'default_copr_post_action = '
             f'"{self.install.default_copr_post_action}"'
         )
-        lines.append(
-            f"default_chroot_auto_detect = "
-            f"{str(self.install.default_chroot_auto_detect).lower()}"
-        )
-        lines.append(
-            f"strict_selected_repo = "
-            f"{str(self.install.strict_selected_repo).lower()}"
-        )
-        lines.append(
-            f"single_package_only = "
-            f"{str(self.install.single_package_only).lower()}"
-        )
         lines.append("")
 
         lines.append("[backend]")
@@ -179,14 +163,9 @@ class Config:
             f"fallback_to_dnf = "
             f"{str(self.backend.fallback_to_dnf).lower()}"
         )
-        lines.append(
-            f"require_copr_cli = "
-            f"{str(self.backend.require_copr_cli).lower()}"
-        )
         lines.append("")
 
         lines.append("[ui]")
-        lines.append(f'language = "{self.ui.language}"')
         lines.append(f"json = {str(self.ui.json).lower()}")
         lines.append("")
 
@@ -208,7 +187,8 @@ class Config:
 # Location: ~/.config/copa/config.toml
 
 [search]
-# Enable/disable search sources
+# Enable/disable search sources. CLI flags (e.g. --official-only,
+# --include-local-repo) override these switches.
 enable_fedora = true
 enable_rpmfusion = true
 enable_terra_if_present = true
@@ -221,38 +201,23 @@ terra_repo_patterns = ["terra*"]
 # Default action after installing from Copr: "disable", "keep", "remove"
 default_copr_post_action = "disable"
 
-# Auto-detect chroot for Copr enable
-default_chroot_auto_detect = true
-
-# Strictly limit package to selected repo source
-strict_selected_repo = true
-
-# Only install single package at a time
-single_package_only = true
-
 [backend]
 # Prefer dnf5 over dnf
 prefer_dnf5 = true
 
-# Fallback to dnf if dnf5 not available
+# Fall back to dnf if dnf5 is not available
 fallback_to_dnf = true
 
-# Require copr-cli for Copr operations
-require_copr_cli = true
-
 [ui]
-# Language: "auto", "en", "zh"
-language = "auto"
-
-# Output in JSON format
+# Output in JSON format by default
 json = false
 
 [risk]
-# Block packages with these risk words
+# Block packages whose description/instructions contain these words
 block_mock_only = true
 block_do_not_use = true
 
-# Warn about experimental packages
+# Raise experimental/testing/beta/unstable packages to medium risk
 warn_experimental = true
 """
 

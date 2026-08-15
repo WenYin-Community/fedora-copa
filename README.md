@@ -61,12 +61,15 @@ dnf install fedora-copa-*.noarch.rpm
 
 - Python 3.11+
 - `dnf5` or `dnf` (dnf5 is default on Fedora 41+; RHEL 10+ uses dnf by default but dnf5 can be installed)
-- `copr-cli`
 - `python3-copr` (PyPI: `copr`)
 - `httpx`
-- `osc` (for OBS support)
+- `osc` (only needed to generate OBS credentials; copa reads `~/.config/osc/oscrc` directly)
 
 Run `copa doctor` to check dependencies.
+
+> `copr-cli` is **not** a runtime dependency: Copr search uses the python-copr API and
+> enabling repos uses the `dnf5 copr` plugin. It is only needed when publishing packages
+> from this project's CI.
 
 ### OBS Authentication (optional)
 
@@ -516,17 +519,12 @@ terra_repo_patterns = ["terra*"]
 
 [install]
 default_copr_post_action = "disable"
-default_chroot_auto_detect = true
-strict_selected_repo = true
-single_package_only = true
 
 [backend]
 prefer_dnf5 = true
 fallback_to_dnf = true
-require_copr_cli = true
 
 [ui]
-language = "auto"
 json = false
 
 [risk]
@@ -534,6 +532,11 @@ block_mock_only = true
 block_do_not_use = true
 warn_experimental = true
 ```
+
+Notes:
+- `[search]` switches are gated by CLI flags: `--official-only`, `--rpmfusion-only`, `--include-local-repo` and `--copr-only` take precedence over the corresponding config values.
+- `[risk] block_*` options block projects whose description/instructions contain "do not use" / "mock only"; `warn_experimental` raises projects described with testing/experimental/beta/unstable words to medium risk.
+- `[ui] json = true` makes `search`/`info`/`list`/`repoquery`/`provides` output JSON by default (the `--json` flag still works per invocation).
 
 ## State File
 

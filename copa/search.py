@@ -1,28 +1,19 @@
 """Search logic - integrate search results from multiple backends"""
 
 from dataclasses import dataclass
-from enum import Enum
 
+from copa.config import RiskConfig
 from copa.copr_backend import CoprBackend, CoprProject
-from copa.dnf_backend import DnfBackend, Package
+from copa.dnf_backend import DnfBackend
 from copa.obs_backend import OBSBackend, OBSPackage, OBSRepo, extract_fedora_version
 
-
-class Source(Enum):
-    """Package source"""
-    FEDORA = "fedora"
-    RPMFUSION = "rpmfusion"
-    TERRA = "terra"
-    COPR = "copr"
-    OBS = "obs"
-
-
-@dataclass
-class SearchResult:
-    """Search result"""
-    package: Package
-    source: Source
-    repo: str
+# Risk keywords, shared with the audit command.
+# Words that always block a project regardless of configuration.
+BLOCK_WORD_TESTING_ONLY = "testing only"
+# Words whose blocking is controlled by RiskConfig.
+BLOCK_WORDS = ("do not use", "mock only")
+# Words that raise risk to medium when RiskConfig.warn_experimental is on.
+MEDIUM_WORDS = ("testing", "experimental", "beta", "unstable")
 
 
 @dataclass
@@ -31,7 +22,6 @@ class CoprSearchResult:
     project: CoprProject
     risk_level: str  # low, medium, high, blocked
     supports_chroot: bool
-    has_package: bool
     best_chroot: str | None = None  # Best matching chroot (with fallback)
     version_gap: int = 0  # Version gap, 0 = exact match
 
@@ -54,29 +44,12 @@ class SearchEngine:
         dnf: DnfBackend,
         copr: CoprBackend,
         obs: OBSBackend | None = None,
+        risk: RiskConfig | None = None,
     ):
         self.dnf = dnf
         self.copr = copr
         self.obs = obs or OBSBackend()
-
-    def _search_dnf_group(self, keyword: str, group: str, source: Source) -> list[SearchResult]:
-        repo_ids = self.dnf.get_enabled_repos().get(group, [])
-        return [
-            SearchResult(package=package, source=source, repo=package.repo)
-            for package in self.dnf.search_in_repos(keyword, repo_ids)
-        ]
-
-    def search_fedora(self, keyword: str) -> list[SearchResult]:
-        """Search Fedora official repos"""
-        return self._search_dnf_group(keyword, "fedora", Source.FEDORA)
-
-    def search_rpmfusion(self, keyword: str) -> list[SearchResult]:
-        """Search RPM Fusion"""
-        return self._search_dnf_group(keyword, "rpmfusion", Source.RPMFUSION)
-
-    def search_terra(self, keyword: str) -> list[SearchResult]:
-        """Search Terra repos"""
-        return self._search_dnf_group(keyword, "terra", Source.TERRA)
+        self.risk = risk or RiskConfig()
 
     def _find_best_copr_chroot(
         self,
@@ -150,7 +123,6 @@ class SearchEngine:
                 project=project,
                 risk_level=risk_level,
                 supports_chroot=supports_chroot,
-                has_package=name_match,
                 best_chroot=best_chroot,
                 version_gap=version_gap,
             ))
@@ -167,11 +139,13 @@ class SearchEngine:
         desc_lower = project.description.lower()
         instructions_lower = project.instructions.lower()
 
-        # High-risk words
-        high_risk_words = ["do not use", "mock only", "testing only", "experimental"]
-        for word in high_risk_words:
-            if word in desc_lower or word in instructions_lower:
-                return "blocked"
+        # High-risk words, blocking controlled by RiskConfig
+        if self.risk.block_do_not_use and "do not use" in (desc_lower + instructions_lower):
+            return "blocked"
+        if self.risk.block_mock_only and "mock only" in (desc_lower + instructions_lower):
+            return "blocked"
+        if BLOCK_WORD_TESTING_ONLY in (desc_lower + instructions_lower):
+            return "blocked"
 
         # No usable chroot at all
         if version_gap < 0:
@@ -185,11 +159,11 @@ class SearchEngine:
         if version_gap == 1:
             return "medium"
 
-        # Medium-risk words
-        medium_risk_words = ["testing", "experimental", "beta", "unstable"]
-        for word in medium_risk_words:
-            if word in desc_lower:
-                return "medium"
+        # Medium-risk words (warn only, controlled by RiskConfig)
+        if self.risk.warn_experimental and any(
+            word in desc_lower for word in MEDIUM_WORDS
+        ):
+            return "medium"
 
         return "low"
 
@@ -251,44 +225,3 @@ class SearchEngine:
             return "high"
 
         return "high"
-
-    def search_all(
-        self,
-        keyword: str,
-        current_fedora_version: int,
-        official_only: bool = False,
-        rpmfusion_only: bool = False,
-        copr_only: bool = False,
-        obs_only: bool = False,
-        no_obs: bool = False,
-        include_local_repo: bool = False,
-        max_obs_fallback: int = 2,
-    ) -> tuple[list[SearchResult], list[CoprSearchResult], list[OBSSearchResult]]:
-        """Search all sources"""
-        fedora_results = []
-        rpmfusion_results = []
-        terra_results = []
-        copr_results = []
-        obs_results = []
-
-        if obs_only:
-            obs_results = self.search_obs(keyword, current_fedora_version, max_obs_fallback)
-            return [], [], obs_results
-
-        search_local = include_local_repo or official_only or rpmfusion_only
-        if search_local and not copr_only and not rpmfusion_only:
-            fedora_results = self.search_fedora(keyword)
-        if search_local and not official_only and not copr_only:
-            rpmfusion_results = self.search_rpmfusion(keyword)
-        if include_local_repo and not official_only and not rpmfusion_only and not copr_only:
-            terra_results = self.search_terra(keyword)
-
-        if not official_only and not rpmfusion_only:
-            chroot = self.dnf.get_chroot()
-            copr_results = self.search_copr(keyword, chroot, current_fedora_version)
-
-        if not no_obs and not official_only and not rpmfusion_only and not copr_only:
-            obs_results = self.search_obs(keyword, current_fedora_version, max_obs_fallback)
-
-        all_results = fedora_results + rpmfusion_results + terra_results
-        return all_results, copr_results, obs_results

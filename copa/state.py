@@ -73,7 +73,10 @@ class AppState:
             return cls()
 
     def save(self, path: Path | None = None) -> None:
-        """Save state file"""
+        """Save state file (atomic: write temp file, then rename)"""
+        import os
+        import tempfile
+
         state_path = path or STATE_FILE
         state_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -85,8 +88,19 @@ class AppState:
             "last_updated": self.last_updated,
         }
 
-        with open(state_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
+        fd, tmp_path = tempfile.mkstemp(
+            dir=state_path.parent, prefix=".state-", suffix=".tmp"
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+            os.replace(tmp_path, state_path)
+        except OSError:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
 
     def add_copr_repo(
         self,

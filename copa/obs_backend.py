@@ -222,6 +222,25 @@ class OBSBackend:
         repos = self.get_project_repos(project)
         fedora_repos = []
 
+        # Rawhide has no numeric version; treat the newest Fedora repo as
+        # current and accept the rest without a version gap.
+        if current_fedora_version == 0:
+            versions = [
+                int(r.fedora_version)
+                for r in repos
+                if r.fedora_version
+            ]
+            newest = max(versions) if versions else None
+            for repo in repos:
+                if repo.fedora_version:
+                    repo.is_current_version = (
+                        newest is not None and int(repo.fedora_version) == newest
+                    )
+                    repo.version_gap = 0
+                    fedora_repos.append(repo)
+            fedora_repos.sort(key=lambda r: not r.is_current_version)
+            return fedora_repos
+
         for repo in repos:
             if repo.fedora_version:
                 try:

@@ -52,7 +52,6 @@ class TestInstallConfig:
         """Default values"""
         config = InstallConfig()
         assert config.default_copr_post_action == "disable"
-        assert config.strict_selected_repo is True
 
 
 class TestConfig:
@@ -82,6 +81,20 @@ class TestConfig:
         temp_config_file.write_text("invalid toml")
         config = Config.load(temp_config_file)
         assert config.search.enable_fedora is True  # Default value
+
+    def test_load_ignores_unknown_keys(self, temp_config_file):
+        """Unknown keys are dropped, known keys in the same section still apply"""
+        temp_config_file.write_text(
+            "[search]\n"
+            "enable_fedora = false\n"
+            "removed_option = true\n"
+            "[ui]\n"
+            'language = "zh"\n'
+            "json = true\n"
+        )
+        config = Config.load(temp_config_file)
+        assert config.search.enable_fedora is False  # Known key applied
+        assert config.ui.json is True  # Known key applied despite unknown sibling
 
     def test_generate_example(self, temp_config_file):
         """Generate example config"""

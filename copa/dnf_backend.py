@@ -1,5 +1,6 @@
 """DNF5 backend - handles interaction with DNF5"""
 
+import fnmatch
 import re
 import subprocess
 from dataclasses import dataclass
@@ -28,14 +29,33 @@ class Repo:
 class DnfBackend:
     """DNF5 backend wrapper"""
 
-    def __init__(self, binary: str | None = None):
+    def __init__(
+        self,
+        binary: str | None = None,
+        prefer_dnf5: bool = True,
+        fallback_to_dnf: bool = True,
+    ):
         if binary:
             self._binary = binary
         else:
             from copa.utils import get_dnf_binary
-            self._binary = get_dnf_binary()
+            self._binary = get_dnf_binary(
+                prefer_dnf5=prefer_dnf5, fallback_to_dnf=fallback_to_dnf
+            )
+        self.binary = self._binary
         # dnf5 uses --repo, dnf uses --repoid
         self._repo_flag = "--repo" if "dnf5" in self._binary else "--repoid"
+
+    @staticmethod
+    def _glob_escape(keyword: str) -> str:
+        """Escape dnf glob metacharacters so the keyword matches literally."""
+        out = []
+        for ch in keyword:
+            if ch in "*?[]":
+                out.append(f"[{ch}]")
+            else:
+                out.append(ch)
+        return "".join(out)
 
     def _run(
         self, args: list[str], sudo: bool = False, timeout: int | None = 60
@@ -63,7 +83,7 @@ class DnfBackend:
         self, keyword: str, repo: str | None = None
     ) -> list[Package]:
         """Search packages using substring match"""
-        args = ["repoquery", "--info", f"*{keyword}*"]
+        args = ["repoquery", "--info", f"*{self._glob_escape(keyword)}*"]
         if repo:
             args.extend([self._repo_flag, repo])
 
@@ -141,8 +161,12 @@ class DnfBackend:
 
         return repos
 
-    def get_enabled_repos(self) -> dict[str, list[str]]:
+    def get_enabled_repos(
+        self, terra_patterns: list[str] | None = None
+    ) -> dict[str, list[str]]:
         """Get enabled repos, categorized by type"""
+        if terra_patterns is None:
+            terra_patterns = ["terra*"]
         repos = self.repolist(enabled_only=True)
         categorized: dict[str, list[str]] = {
             "fedora": [],
@@ -160,7 +184,10 @@ class DnfBackend:
                 categorized["copr"].append(repo.id)
             elif "rpmfusion" in repo_id_lower:
                 categorized["rpmfusion"].append(repo.id)
-            elif "terra" in repo_id_lower:
+            elif any(
+                fnmatch.fnmatchcase(repo_id_lower, pattern.lower())
+                for pattern in terra_patterns
+            ):
                 categorized["terra"].append(repo.id)
             elif repo_id_lower.startswith("home_") or repo_id_lower.startswith("home:"):
                 categorized["obs"].append(repo.id)
@@ -179,7 +206,7 @@ class DnfBackend:
         args = ["repoquery", "--info"]
         for repo_id in repo_ids:
             args.extend([self._repo_flag, repo_id])
-        args.append(f"*{keyword}*")
+        args.append(f"*{self._glob_escape(keyword)}*")
 
         result = self._run(args)
         if result.returncode != 0:
@@ -203,7 +230,7 @@ class DnfBackend:
 
     def search_installed(self, keyword: str) -> list[Package]:
         """Search installed packages by keyword"""
-        args = ["repoquery", "--info", "--installed", f"*{keyword}*"]
+        args = ["repoquery", "--info", "--installed", f"*{self._glob_escape(keyword)}*"]
         result = self._run(args)
         if result.returncode != 0:
             return []
@@ -247,6 +274,40 @@ class DnfBackend:
 
         # Parse output, each line is a copr repo
         return [line.strip() for line in result.stdout.strip().split("\n") if line.strip()]
+
+    def _query_lines(self, args: list[str]) -> list[str]:
+        """Run a read-only repoquery and return non-empty output lines."""
+        result = self._run(args)
+        if result.returncode != 0:
+            return []
+        return [
+            line.strip()
+            for line in result.stdout.strip().split("\n")
+            if line.strip()
+        ]
+
+    def query_requires(self, package: str) -> list[str]:
+        """Query package dependencies"""
+        return self._query_lines(["repoquery", "--requires", package])
+
+    def query_provides(self, package: str) -> list[str]:
+        """Query what a package provides"""
+        return self._query_lines(["repoquery", "--provides", package])
+
+    def query_files(self, package: str) -> list[str]:
+        """Query package file list"""
+        return self._query_lines(["repoquery", "--list", package])
+
+    def query_info(self, package: str) -> str:
+        """Query raw package info"""
+        result = self._run(["repoquery", "--info", package])
+        if result.returncode != 0:
+            return ""
+        return result.stdout
+
+    def search_providers(self, file_path: str) -> list[str]:
+        """Find packages providing a file path or command"""
+        return self._query_lines(["provides", file_path])
 
     def _os_release_version(self) -> str:
         """Read VERSION_ID from /etc/os-release (cached)."""

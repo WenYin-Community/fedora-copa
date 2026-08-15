@@ -61,12 +61,14 @@ dnf install fedora-copa-*.noarch.rpm
 
 - Python 3.11+
 - `dnf5` 或 `dnf`（Fedora 41+ 默认使用 dnf5；RHEL 10+ 默认使用 dnf，但可手动安装 dnf5）
-- `copr-cli`
 - `python3-copr` (PyPI: `copr`)
 - `httpx`
-- `osc`（用于 OBS 支持）
+- `osc`（仅用于生成 OBS 凭证；copa 直接读取 `~/.config/osc/oscrc`）
 
 运行 `copa doctor` 检查依赖。
+
+> `copr-cli` **不是**运行时依赖：Copr 搜索走 python-copr API，启用仓库走 `dnf5 copr` 插件。
+> 它只在本项目的 CI 发布流程中使用。
 
 ### OBS 认证（可选）
 
@@ -516,17 +518,12 @@ terra_repo_patterns = ["terra*"]
 
 [install]
 default_copr_post_action = "disable"
-default_chroot_auto_detect = true
-strict_selected_repo = true
-single_package_only = true
 
 [backend]
 prefer_dnf5 = true
 fallback_to_dnf = true
-require_copr_cli = true
 
 [ui]
-language = "auto"
 json = false
 
 [risk]
@@ -534,6 +531,11 @@ block_mock_only = true
 block_do_not_use = true
 warn_experimental = true
 ```
+
+说明：
+- `[search]` 开关受 CLI 标志优先级控制：`--official-only`、`--rpmfusion-only`、`--include-local-repo`、`--copr-only` 优先于对应配置项。
+- `[risk] block_*` 选项会阻止描述/说明中包含 "do not use" / "mock only" 的项目；`warn_experimental` 会把描述含 testing/experimental/beta/unstable 词的项目风险提升为 medium。
+- `[ui] json = true` 让 `search`/`info`/`list`/`repoquery`/`provides` 默认输出 JSON（`--json` 标志仍可单独使用）。
 
 ## 状态文件
 

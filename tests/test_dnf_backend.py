@@ -3,6 +3,7 @@
 from unittest.mock import ANY, MagicMock, patch
 
 from copa.dnf_backend import DnfBackend, Package, Repo
+from copa.utils import get_dnf_binary
 
 
 class TestDnfBackend:
@@ -27,6 +28,39 @@ class TestDnfBackend:
         """dnf uses --repoid flag"""
         backend = DnfBackend(binary="dnf")
         assert backend._repo_flag == "--repoid"
+
+    def test_glob_escape(self):
+        """dnf glob metacharacters in keywords are escaped"""
+        backend = DnfBackend(binary="dnf5")
+        assert backend._glob_escape("python3*") == "python3[*]"
+        assert backend._glob_escape("a?b[1]") == "a[?]b[[]1[]]"
+
+    @patch("copa.utils.check_command_exists", side_effect=lambda c: c == "dnf")
+    def test_get_dnf_binary_prefers_dnf_when_configured(self, mock_check):
+        """prefer_dnf5=False selects dnf first"""
+        assert get_dnf_binary(prefer_dnf5=False) == "dnf"
+        assert get_dnf_binary(prefer_dnf5=False, fallback_to_dnf=False) == "dnf"
+
+    @patch("copa.utils.check_command_exists", side_effect=lambda c: c == "dnf5")
+    def test_get_dnf_binary_falls_back_to_dnf5(self, mock_check):
+        """prefer_dnf5=False with only dnf5 available still finds a binary"""
+        assert get_dnf_binary(prefer_dnf5=False) == "dnf5"
+
+    @patch("subprocess.run")
+    def test_query_requires(self, mock_run):
+        """query_requires returns non-empty output lines"""
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout="libc.so.6\nlibm.so.6\n", stderr=""
+        )
+        backend = DnfBackend(binary="dnf5")
+        assert backend.query_requires("htop") == ["libc.so.6", "libm.so.6"]
+
+    @patch("subprocess.run")
+    def test_query_files_failure_returns_empty(self, mock_run):
+        """query_files returns [] on non-zero exit"""
+        mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="err")
+        backend = DnfBackend(binary="dnf5")
+        assert backend.query_files("missing") == []
 
     @patch("copa.utils.get_dnf_binary", return_value="dnf5")
     @patch("subprocess.run")

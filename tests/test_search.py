@@ -1,9 +1,10 @@
 """search module tests"""
 
+from copa.config import RiskConfig
 from copa.copr_backend import CoprProject
 from copa.dnf_backend import Package
 from copa.obs_backend import OBSPackage, OBSRepo
-from copa.search import SearchEngine, Source
+from copa.search import SearchEngine
 
 
 class FakeDnf:
@@ -51,45 +52,10 @@ class FakeObs:
         return []
 
 
-def test_search_all_skips_local_repos_by_default():
-    dnf = FakeDnf()
-    engine = SearchEngine(dnf=dnf, copr=FakeCopr(), obs=FakeObs())
-
-    local_results, copr_results, obs_results = engine.search_all("vim", 44, no_obs=True)
-
-    assert local_results == []
-    assert copr_results == []
-    assert obs_results == []
-    assert dnf.search_calls == []
-
-
-def test_search_all_includes_local_repos_when_requested():
-    dnf = FakeDnf()
-    engine = SearchEngine(dnf=dnf, copr=FakeCopr(), obs=FakeObs())
-
-    local_results, _, _ = engine.search_all(
-        "vim",
-        44,
-        include_local_repo=True,
-        no_obs=True,
-    )
-
-    assert [result.source for result in local_results] == [
-        Source.FEDORA,
-        Source.RPMFUSION,
-        Source.TERRA,
-    ]
-    assert dnf.search_calls == [
-        ("vim", ["fedora"]),
-        ("vim", ["rpmfusion-free"]),
-        ("vim", ["terra"]),
-    ]
-
-
-def make_engine(copr=None, obs=None):
+def make_engine(copr=None, obs=None, risk=None):
     """Build a SearchEngine with the shared fakes."""
     return SearchEngine(
-        dnf=FakeDnf(), copr=copr or FakeCopr(), obs=obs or FakeObs()
+        dnf=FakeDnf(), copr=copr or FakeCopr(), obs=obs or FakeObs(), risk=risk
     )
 
 
@@ -186,6 +152,25 @@ class TestAssessCoprRisk:
     def test_medium_testing_word(self):
         p = self._project(description="Testing build for nightly")
         assert make_engine()._assess_copr_risk(p, True, 0) == "medium"
+
+    def test_experimental_warns_not_blocks(self):
+        p = self._project(description="Experimental package, use at your own risk")
+        assert make_engine()._assess_copr_risk(p, True, 0) == "medium"
+
+    def test_block_do_not_use_disabled_by_config(self):
+        p = self._project(description="Do not use in production")
+        engine = make_engine(risk=RiskConfig(block_do_not_use=False))
+        assert engine._assess_copr_risk(p, True, 0) == "low"
+
+    def test_block_mock_only_disabled_by_config(self):
+        p = self._project(instructions="mock only")
+        engine = make_engine(risk=RiskConfig(block_mock_only=False))
+        assert engine._assess_copr_risk(p, True, 0) == "low"
+
+    def test_warn_experimental_disabled(self):
+        p = self._project(description="Experimental package")
+        engine = make_engine(risk=RiskConfig(warn_experimental=False))
+        assert engine._assess_copr_risk(p, True, 0) == "low"
 
     def test_low(self):
         p = self._project(description="Stable production package")

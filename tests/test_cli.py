@@ -7,9 +7,11 @@ from copa.cli import (
     _filter_copr_by_regex,
     _obs_project_exists_in_system,
     _parse_owner_project,
+    cmd_remove,
     cmd_search,
     create_parser,
 )
+from copa.config import Config
 
 
 class MockPackage:
@@ -56,10 +58,11 @@ class TestCmdSearch:
 
     def test_default_skips_local_repos(self, monkeypatch):
         dnf = MockDnfBackend()
-        monkeypatch.setattr("copa.dnf_backend.DnfBackend", lambda: dnf)
+        monkeypatch.setattr("copa.dnf_backend.DnfBackend", lambda **kw: dnf)
         monkeypatch.setattr("copa.copr_backend.CoprBackend", lambda: object())
         monkeypatch.setattr("copa.search.SearchEngine", MockSearchEngine)
         args = create_parser().parse_args(["search", "--json", "vim"])
+        args.config = Config()
 
         assert cmd_search(args) == 0
         assert dnf.search_calls == []
@@ -67,10 +70,11 @@ class TestCmdSearch:
 
     def test_include_local_repo_searches_enabled_repos(self, monkeypatch):
         dnf = MockDnfBackend()
-        monkeypatch.setattr("copa.dnf_backend.DnfBackend", lambda: dnf)
+        monkeypatch.setattr("copa.dnf_backend.DnfBackend", lambda **kw: dnf)
         monkeypatch.setattr("copa.copr_backend.CoprBackend", lambda: object())
         monkeypatch.setattr("copa.search.SearchEngine", MockSearchEngine)
         args = create_parser().parse_args(["search", "--json", "--include-local-repo", "vim"])
+        args.config = Config()
 
         assert cmd_search(args) == 0
         assert dnf.search_calls == [
@@ -82,13 +86,44 @@ class TestCmdSearch:
 
     def test_no_obs_skips_obs_search(self, monkeypatch):
         dnf = MockDnfBackend()
-        monkeypatch.setattr("copa.dnf_backend.DnfBackend", lambda: dnf)
+        monkeypatch.setattr("copa.dnf_backend.DnfBackend", lambda **kw: dnf)
         monkeypatch.setattr("copa.copr_backend.CoprBackend", lambda: object())
         monkeypatch.setattr("copa.search.SearchEngine", MockSearchEngine)
         args = create_parser().parse_args(["search", "--json", "--no-obs", "vim"])
+        args.config = Config()
 
         assert cmd_search(args) == 0
         assert MockSearchEngine.last.obs_calls == []
+
+    def test_config_disables_fedora_search(self, monkeypatch):
+        dnf = MockDnfBackend()
+        monkeypatch.setattr("copa.dnf_backend.DnfBackend", lambda **kw: dnf)
+        monkeypatch.setattr("copa.copr_backend.CoprBackend", lambda: object())
+        monkeypatch.setattr("copa.search.SearchEngine", MockSearchEngine)
+        cfg = Config()
+        cfg.search.enable_fedora = False
+        args = create_parser().parse_args(["search", "--json", "--include-local-repo", "vim"])
+        args.config = cfg
+
+        assert cmd_search(args) == 0
+        assert dnf.search_calls == [
+            ("vim", ["rpmfusion-free"]),
+            ("vim", ["terra"]),
+        ]
+
+    def test_config_disables_copr_search(self, monkeypatch):
+        dnf = MockDnfBackend()
+        monkeypatch.setattr("copa.dnf_backend.DnfBackend", lambda **kw: dnf)
+        monkeypatch.setattr("copa.copr_backend.CoprBackend", lambda: object())
+        monkeypatch.setattr("copa.search.SearchEngine", MockSearchEngine)
+        cfg = Config()
+        cfg.search.enable_copr = False
+        args = create_parser().parse_args(["search", "--json", "vim"])
+        args.config = cfg
+
+        assert cmd_search(args) == 0
+        assert MockSearchEngine.last.copr_calls == []
+        assert MockSearchEngine.last.obs_calls == [("vim", 44)]
 
 
 class MockDnfBackend:
@@ -96,8 +131,10 @@ class MockDnfBackend:
 
     def __init__(self):
         self.search_calls = []
+        self.remove_calls = []
+        self.installed = []
 
-    def get_enabled_repos(self):
+    def get_enabled_repos(self, terra_patterns=None):
         return {
             "fedora": ["fedora"],
             "rpmfusion": ["rpmfusion-free"],
@@ -114,18 +151,27 @@ class MockDnfBackend:
     def get_fedora_version(self):
         return 44
 
+    def search_installed(self, keyword):
+        return self.installed
+
+    def remove(self, package):
+        self.remove_calls.append(package)
+        return True
+
 
 class MockSearchEngine:
     """Mock search engine"""
 
     last = None
 
-    def __init__(self, dnf, copr):
+    def __init__(self, dnf, copr, risk=None):
         self.obs = MockObs()
+        self.copr_calls = []
         self.obs_calls = []
         MockSearchEngine.last = self
 
     def search_copr(self, keyword, chroot, fedora_version):
+        self.copr_calls.append((keyword, chroot, fedora_version))
         return []
 
     def search_obs(self, keyword, fedora_version):
@@ -332,3 +378,40 @@ class TestObsProjectExistsInSystem:
     def test_not_exists(self):
         repo_ids = {"home_other"}
         assert _obs_project_exists_in_system("home:user1", repo_ids) is False
+
+
+class TestCmdRemove:
+    """Test remove command"""
+
+    def test_remove_single_package(self, monkeypatch):
+        dnf = MockDnfBackend()
+        dnf.installed = [MockPackage("vim-enhanced", repo="installed")]
+        monkeypatch.setattr("copa.dnf_backend.DnfBackend", lambda **kw: dnf)
+        args = create_parser().parse_args(["remove", "-y", "vim"])
+        args.config = Config()
+
+        assert cmd_remove(args) == 0
+        assert dnf.remove_calls == ["vim-enhanced"]
+
+    def test_remove_not_installed(self, monkeypatch):
+        dnf = MockDnfBackend()
+        monkeypatch.setattr("copa.dnf_backend.DnfBackend", lambda **kw: dnf)
+        args = create_parser().parse_args(["remove", "-y", "vim"])
+        args.config = Config()
+
+        assert cmd_remove(args) == 1
+        assert dnf.remove_calls == []
+
+    def test_remove_selects_from_multiple(self, monkeypatch):
+        dnf = MockDnfBackend()
+        dnf.installed = [
+            MockPackage("vim-enhanced", repo="installed"),
+            MockPackage("vim-common", repo="installed"),
+        ]
+        monkeypatch.setattr("copa.dnf_backend.DnfBackend", lambda **kw: dnf)
+        args = create_parser().parse_args(["remove", "-y", "vim"])
+        args.config = Config()
+
+        assert cmd_remove(args) == 0
+        # -y auto-selects the first match
+        assert dnf.remove_calls == ["vim-enhanced"]
