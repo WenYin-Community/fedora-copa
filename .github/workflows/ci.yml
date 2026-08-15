@@ -88,7 +88,6 @@ jobs:
       - name: Install build dependencies
         run: |
           dnf install -y \
-            git \
             rpm-build \
             rpmdevtools \
             python3-devel \
@@ -103,8 +102,12 @@ jobs:
       - name: Create source archive
         run: |
           VERSION=$(grep '__version__' copa/__init__.py | sed 's/.*"\(.*\)"/\1/')
-          git archive --format=tar.gz --prefix=fedora-copa-${VERSION}/ \
-            -o $GITHUB_WORKSPACE/fedora-copa-${VERSION}.tar.gz HEAD
+          cd /tmp
+          cp -r $GITHUB_WORKSPACE fedora-copa-${VERSION}
+          tar czf $GITHUB_WORKSPACE/fedora-copa-${VERSION}.tar.gz \
+            --exclude=.git --exclude='__pycache__' --exclude='*.pyc' \
+            fedora-copa-${VERSION}
+          rm -rf fedora-copa-${VERSION}
 
       - name: Build RPM
         run: |
@@ -132,7 +135,6 @@ jobs:
       - name: Install build dependencies
         run: |
           dnf install -y \
-            git \
             rpm-build \
             rpmdevtools \
             python3-devel \
@@ -147,8 +149,12 @@ jobs:
       - name: Create source archive
         run: |
           VERSION=$(grep '__version__' copa/__init__.py | sed 's/.*"\(.*\)"/\1/')
-          git archive --format=tar.gz --prefix=fedora-copa-${VERSION}/ \
-            -o $GITHUB_WORKSPACE/fedora-copa-${VERSION}.tar.gz HEAD
+          cd /tmp
+          cp -r $GITHUB_WORKSPACE fedora-copa-${VERSION}
+          tar czf $GITHUB_WORKSPACE/fedora-copa-${VERSION}.tar.gz \
+            --exclude=.git --exclude='__pycache__' --exclude='*.pyc' \
+            fedora-copa-${VERSION}
+          rm -rf fedora-copa-${VERSION}
 
       - name: Build SRPM
         run: |
@@ -188,8 +194,12 @@ jobs:
       - name: Create source archive
         run: |
           VERSION=$(grep '__version__' copa/__init__.py | sed 's/.*"\(.*\)"/\1/')
-          git archive --format=tar.gz --prefix=fedora-copa-${VERSION}/ \
-            -o $GITHUB_WORKSPACE/fedora-copa-${VERSION}.tar.gz HEAD
+          cd /tmp
+          cp -r $GITHUB_WORKSPACE fedora-copa-${VERSION}
+          tar czf $GITHUB_WORKSPACE/fedora-copa-${VERSION}.tar.gz \
+            --exclude=.git --exclude='__pycache__' --exclude='*.pyc' \
+            fedora-copa-${VERSION}
+          rm -rf fedora-copa-${VERSION}
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
