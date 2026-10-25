@@ -22,7 +22,7 @@ make lint            # ruff check . + mypy copa/
 ruff check .         # 只跑 ruff（line-length=100, target py311）
 
 # 构建
-make build           # 构建 Fedora 43 + 44 RPM（本机需 rpm-build）
+make build           # 从工作区生成源码 tarball 并构建 Fedora 43 + 44 RPM（本机需 rpm-build）
 make build-srpm      # 构建 SRPM —— 会从 GitHub Releases 下载源码包，需先有同名 tag 且 Release 已生成
 make clean           # 清理 build/ dist/ *.egg-info/ __pycache__
 ```
@@ -33,28 +33,42 @@ make clean           # 清理 build/ dist/ *.egg-info/ __pycache__
 
 ```
 copa/
-├── cli.py           # argparse 入口 + 所有 cmd_* 函数 + _resolve_package_name + 过滤器函数
+├── cli.py           # argparse 入口 + main + 向后兼容导出
+├── cli_helpers.py   # 共享 CLI helpers：_make_dnf、_search_local_repos、参数解析
+├── ui.py            # ANSI 颜色常量
+├── i18n.py          # locale 检测 + tr() 翻译
+├── locales/
+│   └── zh_CN.json   # 中文翻译资源
+├── commands/
+│   ├── __init__.py  # 命令导出
+│   ├── search.py    # cmd_search + 关键词/正则过滤器
+│   ├── install.py   # cmd_install + Copr/OBS 安装流 + _resolve_package_name
+│   ├── repo.py      # cmd_repo（enable/disable/remove/list）
+│   ├── list.py      # cmd_list
+│   ├── info.py      # cmd_info
+│   ├── query.py     # cmd_repoquery + cmd_provides
+│   └── admin.py     # cmd_doctor + cmd_audit + cmd_remove
 ├── search.py        # SearchEngine：多后端聚合、风险评估、版本回退
 ├── dnf_backend.py   # DnfBackend：dnf5/dnf 子进程封装（不依赖 libdnf5 Python 绑定）
 ├── copr_backend.py  # CoprBackend：python-copr (copr.v3) API 封装 + 重试
 ├── obs_backend.py   # OBSBackend：openSUSE OBS XML API（httpx 同步）+ 重试
 ├── config.py        # Config dataclass、TOML 配置读写
 ├── state.py         # AppState dataclass、JSON 状态文件（记录 copa 启用的 repo）
-└── utils.py         # get_dnf_binary()、confirm 提示、check_command_exists
+└── utils.py         # get_dnf_binary()、confirm/read_input 提示、check_command_exists
 ```
 
 ### 数据流
 
-1. 用户输入 → `cli.py`（argparse）→ 分发到 `cmd_*` 函数
+1. 用户输入 → `cli.py`（argparse）→ 分发到 `copa/commands/*` 的 `cmd_*` 函数
 2. `cmd_*` 初始化后端：`DnfBackend`、`CoprBackend`、`OBSBackend`
 3. `SearchEngine` 聚合多后端结果
 4. 安装流：搜索 → 选择 → 版本回退检查 → 启用 repo → 解析包名 → 确认 → `dnf install` → 保存状态
 
 ### 关键设计决策
 
-- **并行搜索只发生在 `cmd_install`**：`cli.py:659` 用 `ThreadPoolExecutor(max_workers=2)` 同时搜索 Copr 和 OBS，各取前 10 条合并展示。`SearchEngine.search_all()` 本身是顺序执行，不要误以为并行在 search.py。
+- **并行搜索只发生在 `cmd_install`**：`commands/install.py` 用 `ThreadPoolExecutor(max_workers=2)` 同时搜索 Copr 和 OBS，各取前 10 条合并展示。`SearchEngine.search_all()` 本身是顺序执行，不要误以为并行在 search.py。
 - **版本回退**：Copr（按 chroot）和 OBS（按 repo）最多回退 2 个版本，需显式风险警告 + 用户确认。
-- **包名解析**：`_resolve_package_name()`（cli.py）在已启用的 repo 内搜索实际 RPM 名（project 名 ≠ 包名），找不到则回退 project 名，总会列出结果供选择。
+- **包名解析**：`_resolve_package_name()`（`commands/install.py`）在已启用的 repo 内搜索实际 RPM 名（project 名 ≠ 包名），找不到则回退 project 名，总会列出结果供选择。
 - **失败/取消时保持 repo 启用**：不静默自动禁用，给用户显式 disable/remove 指令。
 - **网络错误处理**：python-copr 库内部已对连接错误自动重试（`connection_attempts=3`）；`CoprBackend` 对 404/403 静默处理，对网络/其他 API 错误打印 stderr 警告后返回空结果（不静默、不崩溃）。OBS 各方法对网络错误返回空结果。
 - **风险评估**：`_assess_copr_risk()` / `_assess_obs_risk()`（search.py）基于关键词与版本差距（gap=0 低、gap=1 中、gap>=2 高、无匹配则阻止）。
@@ -103,7 +117,7 @@ copa/
 
 ## 测试模式
 
-109 个测试分布在 8 个文件。核心逻辑覆盖点：
+170 个测试分布在 10 个文件。核心逻辑覆盖点：
 
 - `DnfBackend` 测试用 `unittest.mock.patch` mock `subprocess.run`
 - `AppState`/`Config` 测试用 `pytest.fixture` + `tmp_path` 建临时文件
@@ -111,13 +125,18 @@ copa/
 - `search.py` 覆盖版本回退（`_find_best_copr_chroot`）与风险分级（`_assess_copr_risk`/`_assess_obs_risk`）
 - `_install_from_copr`/`_install_from_obs` 用 mock Dnf/OBS/State 覆盖安装事务流，`monkeypatch` 掉 `input`/`confirm` 跳过交互
 - `CoprBackend` 用注入的 MockClient 覆盖 API 异常处理（404/403 静默、网络错误打印警告）
+- `tests/test_regressions.py` 覆盖审查修复：多关键词/正则、blocked 拦截、`--copr` 直连、repo 字段、dnf5 参数与 OBS 校验
+- `tests/test_i18n.py` 覆盖 locale 优先级、翻译 key/占位符完整性、中文输入词，以及 JSON 内部枚举仍为英文
+- `tests/conftest.py` 将测试 locale 固定为 `C`，保证英文断言稳定；需要中文的用例自行覆盖环境变量
 
 ## 代码风格
 
-- **所有 UI 文本与代码注释必须英文**：print、提示、错误消息、docstring、行内注释均不得出现中文
-- **`copa/` 和 `tests/` 源码内禁止中文**；CLAUDE.md、README_zh.md 是文档文件，中文可接受
-- `cli.py` 的 `cmd_*` 函数很长（含交互逻辑），改动时保持 ANSI 颜色码与交互流程一致
+- **源码 UI 字符串与注释保持英文**：面向用户的文本用 `tr("English message")` 包裹，英文原文同时作为翻译 key；中文只放在 `copa/locales/zh_CN.json`（`tests/test_i18n.py` 中的中文断言除外）
+- **locale 规则**：`zh_CN`（含 `zh_CN.UTF-8`）显示中文，其他 locale 显示英文；`LC_ALL` > `LC_MESSAGES` > `LANGUAGE` > `LANG`
+- **内部匹配值必须保持英文**：状态/风险枚举、dnf 输出字段、Copr/OBS API state、JSON 的 `status`/`risk_level` 等只用于逻辑判断，不经过 `tr()`；只在文本展示时翻译
+- `DnfBackend._run()` 强制 `LANG=C`/`LC_ALL=C` 的规定不能改动，否则中文 locale 会破坏 `repoquery` 字段解析
+- `commands/*` 的 `cmd_*` 函数很长（含交互逻辑），改动时保持 ANSI 颜色码与交互流程一致
 - `OBSBackend` 用同步 `httpx.Client`（懒初始化），不用 async
-- 搜索支持多关键词 AND 逻辑与正则模式（`-x`），过滤器函数在 `cli.py` 底部
+- 搜索支持多关键词 AND 逻辑与正则模式（`-x`）；正则模式先提取字面量作为后端查询种子，再本地过滤。过滤器函数在 `commands/search.py`
 - Copr 搜索用 `copr.v3.Client.project_proxy.search()`，只对 project 名/owner 子串匹配（不含描述）
 - chroot 探测：`VERSION_ID="?(\d+)"?` 正则同时处理 os-release 中带引号与不带引号的 VERSION_ID

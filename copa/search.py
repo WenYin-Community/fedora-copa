@@ -70,7 +70,10 @@ class SearchEngine:
         # Try fallback match
         best = None
         best_gap = -1
+        arch = current_chroot.rsplit("-", 1)[-1]
         for c in chroots:
+            if not c.endswith(f"-{arch}"):
+                continue
             version = extract_fedora_version(c)
             if not version:
                 continue
@@ -93,23 +96,29 @@ class SearchEngine:
         max_fallback: int = 2,
     ) -> list[CoprSearchResult]:
         """Search Copr repos - substring match on project name or owner"""
-        projects = self.copr.search_projects(keyword)
-        results = []
-        # Support multi-keyword AND logic
-        keywords = keyword.lower().split()
+        keywords = [kw for kw in keyword.lower().split() if kw] or [keyword.lower()]
 
-        def matches_all_keywords(text: str) -> bool:
-            return all(kw in text for kw in keywords)
+        # The Copr API has no AND search: query every term and merge.
+        projects = []
+        seen_projects: set[tuple[str, str]] = set()
+        for term in keywords:
+            for project in self.copr.search_projects(term):
+                key = (project.owner, project.name)
+                if key not in seen_projects:
+                    seen_projects.add(key)
+                    projects.append(project)
+
+        results = []
+
+        def matches_all_keywords(name: str, owner: str) -> bool:
+            return all(kw in name or kw in owner for kw in keywords)
 
         for project in projects:
-            # Filter: project name or owner must contain all keywords
+            # Filter: project name or owner must contain the keywords
             project_name_lower = project.name.lower()
             owner_lower = project.owner.lower()
 
-            name_match = matches_all_keywords(project_name_lower)
-            owner_match = matches_all_keywords(owner_lower)
-
-            if not name_match and not owner_match:
+            if not matches_all_keywords(project_name_lower, owner_lower):
                 continue
 
             # Find best chroot (with fallback)
@@ -174,16 +183,30 @@ class SearchEngine:
         max_fallback: int = 2,
     ) -> list[OBSSearchResult]:
         """Search OBS repos - substring match on package name or project name"""
-        packages = self.obs.search_packages(keyword)
+        keywords = [kw for kw in keyword.lower().split() if kw] or [keyword.lower()]
+
+        # Search package names and project names for every term, then merge.
+        packages = []
+        seen_packages: set[tuple[str, str]] = set()
+        for term in keywords:
+            candidates = list(self.obs.search_packages(term))
+            by_project = getattr(self.obs, "search_packages_by_project", None)
+            if callable(by_project):
+                candidates.extend(by_project(term))
+            for package in candidates:
+                key = (package.project, package.name)
+                if key not in seen_packages:
+                    seen_packages.add(key)
+                    packages.append(package)
+
         results = []
-        keyword_lower = keyword.lower()
 
         for package in packages:
-            # Filter: package name or project name must contain keyword
-            name_match = keyword_lower in package.name.lower()
-            project_match = keyword_lower in package.project.lower()
-
-            if not name_match and not project_match:
+            name_lower = package.name.lower()
+            project_lower = package.project.lower()
+            if not all(
+                kw in name_lower or kw in project_lower for kw in keywords
+            ):
                 continue
 
             repos = self.obs.find_fedora_repos(

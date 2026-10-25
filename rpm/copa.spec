@@ -1,5 +1,5 @@
 Name:           fedora-copa
-Version:        0.9.8
+Version:        0.9.9
 Release:        1%{?dist}
 Summary:        DNF5-style Fedora Copr Package Assistant
 
@@ -73,6 +73,16 @@ install -Dm644 completions/_copa %{buildroot}%{_datadir}/zsh/site-functions/_cop
 %config(noreplace) %{_sysconfdir}/copa/config.toml
 
 %changelog
+* Sun Oct 25 2026 copa contributors <copa@example.com> - 0.9.9-1
+- CLI: split into commands modules; fix audit crash, multi-keyword/regex search,
+  blocked-risk enforcement, explicit --copr selection, and repo field parsing
+- i18n: Chinese interface for zh_CN locales; JSON enums and errors stay English
+- OBS/Copr: architecture-aware fallback, dnf5 OBS disable, safer project names,
+  and bounded Copr search timeouts
+- State/config: disabled repos and installed packages are tracked; malformed
+  config sections are ignored instead of crashing
+- Packaging/docs: include the zh_CN locale catalog and refresh the man page
+
 * Sun Aug 16 2026 copa contributors <copa@example.com> - 0.9.8-1
 - Config is now fully wired: search source switches, dnf binary preference,
   risk blocking, and default JSON output take effect; unimplemented options removed

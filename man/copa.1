@@ -1,4 +1,4 @@
-.TH COPA 1 "May 2026" "copa 0.1.0" "User Commands"
+.TH COPA 1 "October 2026" "copa 0.9.9" "User Commands"
 .SH NAME
 copa \- DNF5-style Fedora Copr Package Assistant
 .SH SYNOPSIS
@@ -58,6 +58,10 @@ Search OBS only.
 .TP
 .B \-\-no\-obs
 Skip OBS search.
+.TP
+.B \-x, \-\-regex
+Search using a regular expression (package names only). At least two literal
+characters are required so a backend query can be issued.
 .PP
 Multiple keywords use AND logic (all words must match).
 .SS install
@@ -85,6 +89,9 @@ Use specified Copr repo.
 .B \-\-obs\-only
 Install from OBS only.
 .TP
+.B \-\-include\-local\-repo
+Also search Fedora, RPM Fusion, and Terra.
+.TP
 .B \-\-no\-obs
 Skip OBS search.
 .TP
@@ -107,7 +114,7 @@ Show package information.
 \fIPACKAGE\fR
 .RE
 .SS list
-List packages or repos.
+List copa-managed repos, or packages in a Copr project.
 .PP
 .RS
 .B copa list
@@ -119,7 +126,7 @@ Manage third-party repos (Copr/OBS).
 .RS
 .B copa repo list
 .RS
-List all third-party repos.
+List all third-party repos, including disabled ones.
 .RE
 .PP
 .B copa repo enable
@@ -139,6 +146,32 @@ Disable repo.
 .RS
 Remove repo.
 .RE
+.RE
+.SS repoquery
+Query package dependencies or file lists.
+.PP
+.RS
+.B copa repoquery
+[\fI\-\-requires\fR | \fI\-\-provides\fR | \fI\-\-files\fR]
+\fIPACKAGE\fR
+.RE
+.PP
+With no option, package information is shown.
+.SS provides
+Find packages providing a file or installed command.
+.PP
+.RS
+.B copa provides
+\fIFILE_OR_COMMAND\fR
+.RE
+.SS remove
+Remove an installed package. Matching installed packages are listed for
+selection before dnf removes the chosen package.
+.PP
+.RS
+.B copa remove
+[\fI\-y\fR]
+\fIPACKAGE\fR
 .RE
 .SS doctor
 Check system environment and dependencies.
@@ -163,6 +196,9 @@ Search for ghostty in Copr, OBS, and local repos.
 .B copa search ghostty terminal
 Search for packages matching both "ghostty" and "terminal".
 .TP
+.B copa search \-x "^ghost"
+Search package names using a regular expression.
+.TP
 .B copa install ghostty
 Install ghostty interactively.
 .TP
@@ -172,11 +208,31 @@ Install ghostty from specified Copr repo.
 .B copa install \-\-dry\-run ghostty
 Preview installation without executing.
 .TP
+.B copa repoquery htop \-\-requires
+Show the dependencies of htop.
+.TP
+.B copa provides /usr/bin/vim
+Find the package that provides /usr/bin/vim.
+.TP
+.B copa remove htop
+Remove htop interactively.
+.TP
 .B copa repo list
-List all third-party repos.
+List all third-party repos, including disabled ones.
 .TP
 .B copa repo disable copr:owner/project
 Disable a Copr repo.
+.TP
+.B LC_ALL=C copa search ghostty
+Force the English interface regardless of the system locale.
+.SH LOCALE
+The interface language follows the system locale. \fBzh_CN\fR (for example
+\fBzh_CN.UTF-8\fR) selects Chinese; every other locale selects English.
+The lookup order is \fBLC_ALL\fR, \fBLC_MESSAGES\fR, \fBLANGUAGE\fR, and
+\fBLANG\fR.
+.PP
+JSON enum values such as \fBstatus\fR and \fBrisk_level\fR always remain in
+English for scripting.
 .SH FILES
 .TP
 .I ~/.config/copa/config.toml

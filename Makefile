@@ -1,14 +1,31 @@
-.PHONY: build clean test lint
+.PHONY: build build-fedora43 build-fedora44 tarball srpm build-srpm clean test lint install-dev show
 
 PACKAGE = fedora-copa
 VERSION = $(shell grep '^Version:' rpm/copa.spec | awk '{print $$2}')
 URL = https://github.com/WenYin-Community/fedora-copa
 SPEC_FILE = rpm/copa.spec
+TARBALL = $(PACKAGE)-$(VERSION).tar.gz
+TARBALL_DIR = build/tarball
 
 # Build targets
 build: build-fedora43 build-fedora44
 
-build-fedora43:
+tarball:
+	@echo "Creating source tarball $(TARBALL)..."
+	@rm -rf $(TARBALL_DIR)
+	@mkdir -p $(TARBALL_DIR)/$(PACKAGE)-$(VERSION)
+	@tar -C . \
+		--exclude=.git --exclude=build --exclude=dist \
+		--exclude=__pycache__ --exclude='*.pyc' --exclude='*.egg-info' \
+		--exclude=.pytest_cache --exclude=.mypy_cache --exclude=.ruff_cache \
+		--exclude='$(PACKAGE)-*.tar.gz' \
+		-cf $(TARBALL_DIR)/source.tar .
+	@tar -C $(TARBALL_DIR)/$(PACKAGE)-$(VERSION) -xf $(TARBALL_DIR)/source.tar
+	@rm -f $(TARBALL_DIR)/source.tar
+	@tar -C $(TARBALL_DIR) -czf $(TARBALL) $(PACKAGE)-$(VERSION)
+	@echo "Source tarball ready: $(TARBALL)"
+
+build-fedora43: tarball
 	@echo "Building for Fedora 43..."
 	@mkdir -p build/RPMS build/SRPMS
 	@rpmbuild -bb $(SPEC_FILE) \
@@ -17,7 +34,7 @@ build-fedora43:
 		--target noarch
 	@echo "Fedora 43 build complete!"
 
-build-fedora44:
+build-fedora44: tarball
 	@echo "Building for Fedora 44..."
 	@mkdir -p build/RPMS build/SRPMS
 	@rpmbuild -bb $(SPEC_FILE) \
@@ -54,6 +71,7 @@ clean:
 	rm -rf build/
 	rm -rf dist/
 	rm -rf *.egg-info/
+	rm -f fedora-copa-*.tar.gz
 	find . -type d -name __pycache__ -exec rm -rf {} +
 
 # Show build artifacts

@@ -22,6 +22,7 @@ DNF5 风格的 Fedora Copr 软件包助手。
 
 - **多关键词 AND 搜索** - `copa search ghostty terminal` 匹配同时包含两个词的包
 - **正则搜索** - `copa search -x "^ghost"` 支持正则表达式匹配（仅包名）
+- **中英双语界面** - 根据系统 locale 自动切换：`zh_CN` 显示中文，其他显示英文
 - **JSON 输出** - `copa --json search ghostty` 机器可读格式
 - **统一的第三方仓库管理** - `copa repo list/enable/disable/remove`
 - **版本 fallback** - Copr 和 OBS 均支持 chroot/仓库版本降级（最多降 2 个版本），明确提示风险
@@ -32,6 +33,23 @@ DNF5 风格的 Fedora Copr 软件包助手。
 - **安装失败处理** - 失败时仓库保持启用，提示禁用/移除命令
 - **Shell 补全** - bash 和 zsh 补全脚本
 - **Man page** - `man copa`
+
+## 界面语言
+
+`copa` 根据系统 locale 自动选择界面语言：
+
+- `zh_CN`（例如 `zh_CN.UTF-8`）：中文
+- 其他 locale（`C`、`en_US.UTF-8`、`zh_TW.UTF-8` 等）：英文
+
+locale 检测顺序为 `LC_ALL` → `LC_MESSAGES` → `LANGUAGE` → `LANG`。临时强制英文：
+
+```bash
+LC_ALL=C copa search ghostty
+```
+
+JSON 输出中的 `status`、`risk_level` 等枚举值始终保持英文，便于脚本处理。
+
+中文模式下，确认提示可直接输入 `是` / `否`，交互选择也可输入 `搜索` / `退出` / `取消`。
 
 ## 安装
 
@@ -299,7 +317,7 @@ copa --json provides /usr/bin/vim
 
 | 子命令 | 说明 |
 |--------|------|
-| `list` | 列出所有第三方仓库 |
+| `list` | 列出所有第三方仓库（含已禁用） |
 | `enable REPO` | 启用仓库（格式：`copr:owner/project` 或 `obs:project`） |
 | `disable REPO` | 禁用仓库 |
 | `remove REPO` | 删除仓库 |
@@ -334,6 +352,10 @@ If you don't want this, you can disable or remove it:
 
 Disable repo now? [y/N]:
 ```
+
+使用 `-y/--assumeyes` 时会跳过该提示，仓库保持启用；可稍后用
+`copa repo disable ...` 或 `copa repo remove ...` 清理。已被禁用的仓库
+也会出现在 `copa repo list` 中。
 
 ## 版本 Fallback
 
@@ -582,7 +604,7 @@ ruff check .
 mypy copa/
 make lint
 
-# 构建 RPM
+# 构建 RPM（自动从工作区生成源码 tarball）
 make build
 make build-srpm   # 从 GitHub Releases 下载源码包
 ```

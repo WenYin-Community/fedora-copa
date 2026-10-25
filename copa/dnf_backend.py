@@ -2,6 +2,7 @@
 
 import fnmatch
 import re
+import shutil
 import subprocess
 from dataclasses import dataclass
 
@@ -34,6 +35,7 @@ class DnfBackend:
         binary: str | None = None,
         prefer_dnf5: bool = True,
         fallback_to_dnf: bool = True,
+        assumeyes: bool = False,
     ):
         if binary:
             self._binary = binary
@@ -43,6 +45,7 @@ class DnfBackend:
                 prefer_dnf5=prefer_dnf5, fallback_to_dnf=fallback_to_dnf
             )
         self.binary = self._binary
+        self._assume_yes = assumeyes
         # dnf5 uses --repo, dnf uses --repoid
         self._repo_flag = "--repo" if "dnf5" in self._binary else "--repoid"
 
@@ -66,6 +69,8 @@ class DnfBackend:
         if sudo:
             cmd.append("sudo")
         cmd.append(self._binary)
+        if self._assume_yes:
+            cmd.append("-y")
         cmd.extend(args)
         # Force LANG=C for consistent English output (field names, etc.)
         env = {**os.environ, "LANG": "C", "LC_ALL": "C"}
@@ -103,9 +108,13 @@ class DnfBackend:
             name=fields.get("Name", ""),
             version=version,
             release=release,
-            arch=fields.get("Architecture", ""),
+            arch=fields.get("Architecture") or fields.get("Arch", ""),
             summary=fields.get("Summary", ""),
-            repo=fields.get("Repo", ""),
+            repo=(
+                fields.get("Repository")
+                or fields.get("From repository")
+                or fields.get("Repo", "")
+            ),
             evr=f"{epoch}:{version}-{release}",
         )
 
@@ -131,9 +140,7 @@ class DnfBackend:
 
     def repolist(self, enabled_only: bool = True) -> list[Repo]:
         """List repos"""
-        args = ["repolist"]
-        if enabled_only:
-            args.append("--enabled")
+        args = ["repolist", "--enabled" if enabled_only else "--all"]
 
         result = self._run(args)
         if result.returncode != 0:
@@ -306,29 +313,85 @@ class DnfBackend:
         return result.stdout
 
     def search_providers(self, file_path: str) -> list[str]:
-        """Find packages providing a file path or command"""
-        return self._query_lines(["provides", file_path])
+        """Find packages providing a file path or command.
 
-    def _os_release_version(self) -> str:
-        """Read VERSION_ID from /etc/os-release (cached)."""
-        if not hasattr(self, '_cached_os_version'):
+        Installed ownership is queried first (fast, from the rpmdb). Only when
+        the file is not installed are available repos queried. A bare command
+        name is resolved through PATH first.
+        """
+        candidates = [file_path]
+        if "/" not in file_path:
+            resolved = shutil.which(file_path)
+            if resolved and resolved not in candidates:
+                candidates.append(resolved)
+
+        results: list[str] = []
+        for candidate in candidates:
+            installed = self._query_lines(
+                ["repoquery", "--installed", "--file", candidate]
+            )
+            for line in installed:
+                if line not in results:
+                    results.append(line)
+            if installed:
+                continue
+
+            for line in self._query_lines(["repoquery", "--file", candidate]):
+                if line not in results:
+                    results.append(line)
+        return results
+
+    def _os_release_identity(self) -> tuple[str, str]:
+        """Read (distribution id, version) from /etc/os-release (cached)."""
+        if not hasattr(self, '_cached_os_release'):
+            distro_id = "fedora"
+            version = "rawhide"
             try:
                 with open("/etc/os-release") as f:
                     os_content = f.read()
-                match = re.search(r'VERSION_ID="?(\d+)"?', os_content)
-                self._cached_os_version = match.group(1) if match else "rawhide"
+                id_match = re.search(r'^ID="?([^"\n]+)"?', os_content, re.MULTILINE)
+                if id_match:
+                    distro_id = id_match.group(1).lower()
+                version_match = re.search(
+                    r'^VERSION_ID="?([^"\n]+)"?', os_content, re.MULTILINE
+                )
+                if version_match:
+                    raw_version = version_match.group(1).strip()
+                    numeric = re.search(r'(\d+)', raw_version)
+                    version = numeric.group(1) if numeric else raw_version.lower()
             except OSError:
-                self._cached_os_version = "rawhide"
-        return self._cached_os_version
+                pass
+            self._cached_os_release = (distro_id, version)
+        return self._cached_os_release
+
+    def _os_release_version(self) -> str:
+        """Read VERSION_ID from /etc/os-release (cached)."""
+        return self._os_release_identity()[1]
+
+    def get_distro_id(self) -> str:
+        """Return the distribution id from /etc/os-release."""
+        return self._os_release_identity()[0]
+
+    def is_fedora(self) -> bool:
+        """Return whether the host distribution is Fedora."""
+        return self.get_distro_id() == "fedora"
 
     def get_chroot(self) -> str:
         """Get current chroot"""
         result = subprocess.run(["uname", "-m"], capture_output=True, text=True)
         arch = result.stdout.strip() if result.returncode == 0 else "x86_64"
-        return f"fedora-{self._os_release_version()}-{arch}"
+        distro_id, version = self._os_release_identity()
+        namespace = {
+            "fedora": "fedora",
+            "rhel": "rhel",
+            "centos": "centos-stream",
+        }.get(distro_id, distro_id)
+        return f"{namespace}-{version}-{arch}"
 
     def get_fedora_version(self) -> int:
-        """Get Fedora version number"""
+        """Get Fedora version number (0 for rawhide and non-Fedora hosts)."""
+        if not self.is_fedora():
+            return 0
         try:
             return int(self._os_release_version())
         except ValueError:

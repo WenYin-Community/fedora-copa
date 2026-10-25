@@ -150,6 +150,14 @@ class AppState:
         repo = self.get_copr_repo(owner, project)
         return repo.enabled_by_copa if repo else False
 
+    def set_copr_enabled(self, owner: str, project: str, enabled: bool) -> bool:
+        """Update the enabled flag for a managed Copr repo."""
+        repo = self.get_copr_repo(owner, project)
+        if repo is None:
+            return False
+        repo.enabled_by_copa = enabled
+        return True
+
     def add_obs_repo(
         self,
         project: str,
@@ -198,3 +206,11 @@ class AppState:
         """Check if OBS repo was enabled by copa"""
         repo = self.get_obs_repo(project)
         return repo.enabled_by_copa if repo else False
+
+    def set_obs_enabled(self, project: str, enabled: bool) -> bool:
+        """Update the enabled flag for a managed OBS repo."""
+        repo = self.get_obs_repo(project)
+        if repo is None:
+            return False
+        repo.enabled_by_copa = enabled
+        return True

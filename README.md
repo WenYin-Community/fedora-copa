@@ -22,6 +22,7 @@ Supported package sources:
 
 - **Multi-keyword AND search** - `copa search ghostty terminal` matches packages containing both words
 - **Regex search** - `copa search -x "^ghost"` for regex pattern matching (name only)
+- **Bilingual interface** - follows the system locale: `zh_CN` shows Chinese, everything else shows English
 - **JSON output** - `copa --json search ghostty` for machine-readable output
 - **Unified third-party repo management** - `copa repo list/enable/disable/remove`
 - **Version fallback** - Copr and OBS both support chroot/repo version fallback (max 2 versions) with explicit risk warning
@@ -32,6 +33,23 @@ Supported package sources:
 - **Install failure handling** - repo stays enabled on failure with disable/remove instructions
 - **Shell completion** - bash and zsh completion scripts
 - **Man page** - `man copa`
+
+## Interface Language
+
+`copa` selects the interface language from the system locale:
+
+- `zh_CN` (for example `zh_CN.UTF-8`): Chinese
+- Any other locale (`C`, `en_US.UTF-8`, `zh_TW.UTF-8`, ...): English
+
+The lookup order is `LC_ALL` → `LC_MESSAGES` → `LANGUAGE` → `LANG`. To force English temporarily:
+
+```bash
+LC_ALL=C copa search ghostty
+```
+
+Enum values in JSON output such as `status` and `risk_level` always stay in English for scripting.
+
+In Chinese mode, confirmation prompts accept `是` / `否`, and selection prompts accept `搜索` / `退出` / `取消` as well.
 
 ## Installation
 
@@ -300,7 +318,7 @@ copa --json provides /usr/bin/vim
 
 | Subcommand | Description |
 |------------|-------------|
-| `list` | List all third-party repos |
+| `list` | List all third-party repos (enabled and disabled) |
 | `enable REPO` | Enable repo (format: `copr:owner/project` or `obs:project`) |
 | `disable REPO` | Disable repo |
 | `remove REPO` | Remove repo |
@@ -335,6 +353,10 @@ If you don't want this, you can disable or remove it:
 
 Disable repo now? [y/N]:
 ```
+
+With `-y/--assumeyes`, this prompt is skipped and the repo stays enabled.
+Use `copa repo disable ...` or `copa repo remove ...` to clean up later.
+Repos that are already disabled are still shown by `copa repo list`.
 
 ## Version Fallback
 
@@ -583,7 +605,7 @@ ruff check .
 mypy copa/
 make lint
 
-# Build RPM
+# Build RPM (creates the source tarball from the workspace)
 make build
 make build-srpm   # downloads source tarball from GitHub Releases
 ```

@@ -1,10 +1,14 @@
 """Copr backend - handles interaction with Copr API and copr-cli"""
 
 import sys
+import threading
 from dataclasses import dataclass
+from typing import Any
 
 from copr.v3 import Client
 from copr.v3.exceptions import CoprAuthException, CoprException, CoprNoResultException
+
+from copa.i18n import tr
 
 
 def _warn_copr_api_error(exc: CoprException) -> None:
@@ -14,7 +18,10 @@ def _warn_copr_api_error(exc: CoprException) -> None:
     outcomes (project missing / auth rejected) and are swallowed silently.
     """
     if not isinstance(exc, (CoprNoResultException, CoprAuthException)):
-        print(f"  Warning: Copr API error: {exc}", file=sys.stderr)
+        print(
+            tr("  Warning: Copr API error: {error}").format(error=exc),
+            file=sys.stderr,
+        )
 
 
 @dataclass
@@ -50,28 +57,57 @@ class CoprBackend:
     def __init__(self):
         self.client = Client.create_from_config_file()
 
-    def search_projects(self, query: str, limit: int = 20) -> list[CoprProject]:
-        """Search Copr projects"""
-        try:
-            projects = self.client.project_proxy.search(query)
-            result = []
-            for project in projects[:limit]:
-                chroots = (
-                    list(project.chroot_repos.keys())
-                    if hasattr(project, 'chroot_repos')
-                    else []
-                )
-                result.append(CoprProject(
-                    owner=project.ownername,
-                    name=project.name,
-                    description=project.description or "",
-                    chroots=chroots,
-                    instructions=project.instructions or "",
-                ))
-            return result
-        except CoprException as exc:
-            _warn_copr_api_error(exc)
+    def search_projects(
+        self, query: str, limit: int = 20, timeout: float = 15.0
+    ) -> list[CoprProject]:
+        """Search Copr projects with a bounded wait.
+
+        The public Copr search endpoint can take a very long time for broad
+        terms, so the request runs in a daemon thread and is abandoned after
+        ``timeout`` seconds.
+        """
+        outcome: dict[str, Any] = {}
+
+        def run_search() -> None:
+            try:
+                outcome["projects"] = self.client.project_proxy.search(query)
+            except Exception as exc:  # handled in the calling thread
+                outcome["error"] = exc
+
+        thread = threading.Thread(target=run_search, daemon=True)
+        thread.start()
+        thread.join(timeout)
+        if thread.is_alive():
+            print(
+                tr("  Warning: Copr search for '{query}' timed out after {timeout}s")
+                .format(query=query, timeout=f"{timeout:g}"),
+                file=sys.stderr,
+            )
             return []
+
+        error = outcome.get("error")
+        if isinstance(error, CoprException):
+            _warn_copr_api_error(error)
+            return []
+        if error is not None:
+            raise error
+
+        projects = outcome.get("projects") or []
+        result = []
+        for project in projects[:limit]:
+            chroots = (
+                list(project.chroot_repos.keys())
+                if hasattr(project, 'chroot_repos')
+                else []
+            )
+            result.append(CoprProject(
+                owner=project.ownername,
+                name=project.name,
+                description=project.description or "",
+                chroots=chroots,
+                instructions=project.instructions or "",
+            ))
+        return result
 
     def get_project(self, owner: str, name: str) -> CoprProject | None:
         """Get project details"""
@@ -117,7 +153,7 @@ class CoprBackend:
     ) -> list[CoprBuild]:
         """Get build list"""
         try:
-            kwargs: dict[str, str | int] = {"limit": limit}
+            kwargs: dict[str, Any] = {"pagination": {"limit": limit}}
             if package:
                 kwargs["packagename"] = package
             builds = self.client.build_proxy.get_list(

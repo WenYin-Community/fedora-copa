@@ -4,6 +4,7 @@ import dataclasses
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any, get_origin
 
 DEFAULT_CONFIG_PATH = Path.home() / ".config" / "copa" / "config.toml"
 
@@ -79,6 +80,28 @@ class Config:
     ui: UIConfig = field(default_factory=UIConfig)
     risk: RiskConfig = field(default_factory=RiskConfig)
 
+    @staticmethod
+    def _section_kwargs(section_cls: type, values: dict[str, Any]) -> dict[str, Any]:
+        """Keep known keys whose value type matches the dataclass annotation."""
+        kwargs: dict[str, Any] = {}
+        for f in dataclasses.fields(section_cls):
+            if f.name not in values:
+                continue
+            value = values[f.name]
+            origin = get_origin(f.type)
+            if f.type is bool:
+                if isinstance(value, bool):
+                    kwargs[f.name] = value
+            elif origin is list:
+                if isinstance(value, list) and all(isinstance(v, str) for v in value):
+                    kwargs[f.name] = value
+            elif f.type is str:
+                if isinstance(value, str):
+                    kwargs[f.name] = value
+            else:
+                kwargs[f.name] = value
+        return kwargs
+
     @classmethod
     def load(cls, path: Path | None = None) -> "Config":
         """Load configuration file"""
@@ -105,13 +128,13 @@ class Config:
             ("ui", UIConfig),
             ("risk", RiskConfig),
         ):
-            if key not in data:
+            section = data.get(key)
+            if not isinstance(section, dict):
                 continue
             try:
-                known = {f.name for f in dataclasses.fields(section_cls)}
-                kwargs = {k: v for k, v in data[key].items() if k in known}
+                kwargs = cls._section_kwargs(section_cls, section)
                 setattr(config, key, section_cls(**kwargs))
-            except TypeError:
+            except (TypeError, ValueError):
                 continue
 
         return config

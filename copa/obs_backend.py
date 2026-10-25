@@ -12,6 +12,13 @@ import httpx
 OBS_API_BASE = "https://api.opensuse.org"
 OBS_REPO_DIR = Path("/etc/yum.repos.d")
 
+_PROJECT_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:+-]*$")
+
+
+def _is_valid_project_name(project: str) -> bool:
+    """Reject path-like or otherwise unsafe OBS project names."""
+    return bool(_PROJECT_NAME_RE.match(project)) and ".." not in project
+
 
 def _xpath_string_literal(value: str) -> str:
     """Build safe XPath string literal for values containing quotes."""
@@ -74,8 +81,9 @@ class OBSRepo:
 class OBSBackend:
     """OBS backend wrapper"""
 
-    def __init__(self, api_base: str = OBS_API_BASE):
+    def __init__(self, api_base: str = OBS_API_BASE, dnf_binary: str | None = None):
         self.api_base = api_base
+        self._dnf_binary = dnf_binary
         self._auth = self._load_osc_auth()
         self._client: httpx.Client | None = None
         self._available: bool | None = None  # cached health check result
@@ -98,7 +106,7 @@ class OBSBackend:
         if not oscrc.exists():
             return None
         try:
-            cfg = configparser.ConfigParser()
+            cfg = configparser.ConfigParser(interpolation=None)
             cfg.read(oscrc)
             for section in cfg.sections():
                 if "api.opensuse.org" in section:
@@ -183,8 +191,57 @@ class OBSBackend:
         except (httpx.HTTPError, ET.ParseError):
             return []
 
+    def search_packages_by_project(
+        self, query: str, limit: int = 20
+    ) -> list[OBSPackage]:
+        """Search packages whose project name contains the query."""
+        if not self.is_available():
+            return []
+        try:
+            query_literal = _xpath_string_literal(query)
+            root = self._get(
+                "/search/package",
+                {"match": f"contains(@project,{query_literal})"},
+            )
+            packages = []
+            for pkg_elem in root.findall(".//package")[:limit]:
+                packages.append(OBSPackage(
+                    name=pkg_elem.get("name", ""),
+                    project=pkg_elem.get("project", ""),
+                    title=pkg_elem.findtext("title", ""),
+                    description=pkg_elem.findtext("description", ""),
+                ))
+            return packages
+        except (httpx.HTTPError, ET.ParseError):
+            return []
+
+    def installed_repo_ids(self) -> set[str]:
+        """Return repo ids defined by OBS-managed repo files."""
+        repo_ids: set[str] = set()
+        try:
+            repo_files = list(OBS_REPO_DIR.glob("*.repo"))
+        except OSError:
+            return repo_ids
+
+        for path in repo_files:
+            try:
+                content = path.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                continue
+            if "download.opensuse.org/repositories" not in content:
+                continue
+            config = configparser.ConfigParser(interpolation=None)
+            try:
+                config.read_string(content)
+            except configparser.Error:
+                continue
+            repo_ids.update(config.sections())
+        return repo_ids
+
     def get_project_repos(self, project: str) -> list[OBSRepo]:
         """Get project repo list"""
+        if not _is_valid_project_name(project):
+            return []
         try:
             root = self._get(f"/source/{project}/_meta")
             repo_file_name = self._get_repo_file_name(project)
@@ -266,6 +323,8 @@ class OBSBackend:
 
     def download_repo_file(self, project: str, repository: str) -> bool:
         """Download repo file to /etc/yum.repos.d/"""
+        if not _is_valid_project_name(project):
+            return False
         repo_file_name = self._get_repo_file_name(project)
         repo_file_path = OBS_REPO_DIR / repo_file_name
         repo_file_url = self.get_repo_file_url(project, repository)
@@ -284,20 +343,30 @@ class OBSBackend:
 
     def disable_repo(self, project: str) -> bool:
         """Disable OBS repo"""
+        if not _is_valid_project_name(project):
+            return False
         repo_id = project.replace(":", "_").replace("/", "_")
+        from copa.utils import get_dnf_binary
+
+        binary = self._dnf_binary or get_dnf_binary()
+        if "dnf5" in binary:
+            command = [
+                binary, "config-manager", "setopt", f"{repo_id}.enabled=0"
+            ]
+        else:
+            command = [
+                binary, "config-manager", "--set-disabled", repo_id
+            ]
         try:
-            result = subprocess.run(
-                [
-                    "sudo", "dnf", "config-manager",
-                    "--set-disabled", repo_id
-                ],
-            )
+            result = subprocess.run(["sudo", *command])
             return result.returncode == 0
         except OSError:
             return False
 
     def remove_repo_file(self, project: str) -> bool:
         """Delete OBS repo file"""
+        if not _is_valid_project_name(project):
+            return False
         # OBS repo files may use colons (home:user.repo) or underscores (home_user.repo)
         # depending on how they were added. Try both formats.
         paths = [
